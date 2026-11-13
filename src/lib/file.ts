@@ -1,4 +1,5 @@
-import type { AppData, Charge, Currency, FxRate, Settings, Subscription } from '../types'
+import type { AppData, Charge, Category, Currency, FxRate, Settings, Subscription } from '../types'
+import { CATEGORY_ORDER } from './money'
 import { todayISO } from './date'
 
 /* ── JSON 匯出 ─────────────────────────────────────── */
@@ -58,12 +59,13 @@ export function validateAppData(raw: unknown): ValidationResult {
       id: s.id,
       name: s.name,
       vendor: isStr(s.vendor) ? s.vendor : '',
-      category: (isStr(s.category) ? s.category : 'other') as Subscription['category'],
+      // category 一定要落在已知值內，否則 CATEGORY_META[cat] 會是 undefined 而讓畫面爆掉
+      category: (CATEGORY_ORDER.includes(s.category as Category) ? s.category : 'other') as Category,
       amount: s.amount,
       currency: s.currency as Currency,
       cycle: (CYCLES.includes(s.cycle as string) ? s.cycle : 'monthly') as Subscription['cycle'],
-      anchorDay: isNum(s.anchorDay) ? s.anchorDay : 1,
-      anchorMonth: isNum(s.anchorMonth) ? s.anchorMonth : null,
+      anchorDay: isNum(s.anchorDay) ? Math.min(31, Math.max(1, Math.round(s.anchorDay))) : 1,
+      anchorMonth: isNum(s.anchorMonth) ? Math.min(12, Math.max(1, Math.round(s.anchorMonth))) : null,
       startedAt: isDate(s.startedAt) ? s.startedAt : todayISO(),
       endedAt: isDate(s.endedAt) ? s.endedAt : null,
       trialEndsAt: isDate(s.trialEndsAt) ? s.trialEndsAt : null,

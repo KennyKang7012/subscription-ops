@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { splitCharge } from '../money'
-import { validateAppData } from '../file'
+import { clearBackup, readBackup, saveBackup, validateAppData } from '../file'
 import { makeCharge, makeData, makeSub } from './fixtures'
 
 describe('splitCharge', () => {
@@ -62,6 +62,20 @@ describe('validateAppData（匯入防護）', () => {
     if (r.ok) expect(r.data.settings.monthlyBudgetTwd).toBe(0)
   })
 
+  it('category 不在已知值內就退成 other（否則 CATEGORY_META 會是 undefined）', () => {
+    const bad = makeData({ subscriptions: [makeSub({ category: 'foo' as never })] })
+    const r = validateAppData(bad)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data.subscriptions[0].category).toBe('other')
+  })
+
+  it('anchorDay 超出 1–31 會被夾回合法範圍', () => {
+    const bad = makeData({ subscriptions: [makeSub({ anchorDay: 99 })] })
+    const r = validateAppData(bad)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data.subscriptions[0].anchorDay).toBe(31)
+  })
+
   it('補齊選填欄位，不讓 undefined 流入計算', () => {
     const sparse = {
       subscriptions: [{ id: 'x', name: 'A', amount: 5, currency: 'USD' }],
@@ -80,5 +94,30 @@ describe('validateAppData（匯入防護）', () => {
       expect(r.data.settings.displayCurrency).toBe('TWD')
       expect(r.data.settings.feeRate).toBe(0.015)
     }
+  })
+})
+
+describe('匯入前快照', () => {
+  afterEach(() => clearBackup())
+
+  it('存了之後讀得回來，並帶著時間戳', () => {
+    expect(readBackup()).toBeNull()
+    const data = makeData({ charges: [makeCharge()] })
+    saveBackup(data)
+    const slot = readBackup()
+    expect(slot).not.toBeNull()
+    expect(slot!.data.charges).toHaveLength(1)
+    expect(Number.isNaN(Date.parse(slot!.savedAt))).toBe(false)
+  })
+
+  it('清掉之後就讀不到', () => {
+    saveBackup(makeData())
+    clearBackup()
+    expect(readBackup()).toBeNull()
+  })
+
+  it('快照內容壞掉時回傳 null，不會讓呼叫端爆掉', () => {
+    localStorage.setItem('ai-tools-subscription-v1:backup', '{not json')
+    expect(readBackup()).toBeNull()
   })
 })

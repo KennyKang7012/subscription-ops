@@ -80,10 +80,10 @@ export function resolveRate(data: AppData, monthKey: string): ResolvedRate {
     return { rate: last.rate, source: 'market', from: last.date }
   }
 
-  // 3.5) 沒有市場匯率時，沿用最近一次手動設定的值（但標示為手動，不可冒充市場）
-  const manualAny = sorted.filter((r) => r.source === 'manual')
-  if (manualAny.length) {
-    const last = manualAny[manualAny.length - 1]
+  // 3.5) 沒有市場匯率時，沿用「該月或之前」最近一次手動設定的值（但標示為手動，不可冒充市場）
+  const manualBefore = sorted.filter((r) => r.source === 'manual' && r.date <= end)
+  if (manualBefore.length) {
+    const last = manualBefore[manualBefore.length - 1]
     return { rate: last.rate, source: 'manual', from: last.date }
   }
 

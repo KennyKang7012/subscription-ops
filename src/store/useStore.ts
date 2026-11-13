@@ -65,9 +65,20 @@ export const useStore = create<Store>()(
 
       updateSubscription: (id, patch) =>
         set((s) => ({
-          subscriptions: s.subscriptions.map((x) =>
-            x.id === id ? normalizeEndedAt({ ...x, ...patch }) : x,
-          ),
+          subscriptions: s.subscriptions.map((x) => {
+            if (x.id !== id) return x
+            const next = { ...x, ...patch }
+            const wasStopped = x.status === 'cancelled' || x.status === 'paused'
+            const isStopped = next.status === 'cancelled' || next.status === 'paused'
+
+            // 從暫停／取消恢復成訂閱中：清除當初自動補上的結束日。
+            // 這裡不看日期，隔天才恢復也要能清掉，否則整筆訂閱會繼續被排除。
+            if (wasStopped && !isStopped) {
+              return { ...next, endedAt: patch.endedAt ?? null }
+            }
+
+            return normalizeEndedAt(next)
+          }),
         })),
 
       removeSubscription: (id) =>
@@ -192,10 +203,6 @@ export function snapshot(state: Store): AppData {
 function normalizeEndedAt(sub: Subscription): Subscription {
   if ((sub.status === 'cancelled' || sub.status === 'paused') && !sub.endedAt) {
     return { ...sub, endedAt: todayISO() }
-  }
-  // 恢復成訂閱中／試用中時，清掉「因暫停而自動補上」的結束日
-  if ((sub.status === 'active' || sub.status === 'trial') && sub.endedAt === todayISO()) {
-    return { ...sub, endedAt: null }
   }
   return sub
 }

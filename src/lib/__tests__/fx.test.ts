@@ -59,3 +59,15 @@ describe('resolveRate 匯率優先序', () => {
     expect(resolveRate(data, '2026-11')).toMatchObject({ source: 'market', rate: 32.6 })
   })
 })
+
+describe('resolveRate 邊界', () => {
+  it('未來月份的手動匯率不會被拿來當本月的估值', () => {
+    const data = makeData({
+      fxRates: [
+        { id: 'f1', date: '2026-12-05', pair: 'USD/TWD', rate: 34.5, source: 'manual' },
+      ],
+    })
+    // 11 月查不到任何可用匯率 → 回到全域預設，而不是偷用 12 月的 34.5
+    expect(resolveRate(data, '2026-11')).toMatchObject({ source: 'default', rate: 32 })
+  })
+})
