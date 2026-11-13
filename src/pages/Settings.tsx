@@ -22,6 +22,9 @@ export function SettingsPage() {
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [backup, setBackup] = useState<BackupSlot | null>(() => readBackup())
+  // 匯率與手續費用草稿字串：邊打字邊清空時不會把 0 送進 store
+  const [rateDraft, setRateDraft] = useState(String(settings.defaultRate))
+  const [feeDraft, setFeeDraft] = useState(String(Number((settings.feeRate * 100).toFixed(2))))
   const [csvRange, setCsvRange] = useState<CsvRange>('month')
   const [csvMonth, setCsvMonth] = useState(currentMonthKey())
 
@@ -33,12 +36,14 @@ export function SettingsPage() {
     try {
       const data = await readJSONFile(file)
       // 匯入會直接覆蓋本機資料，先留一份快照，匯錯還能救回來
-      saveBackup(snapshot(useStore.getState()))
+      const backed = saveBackup(snapshot(useStore.getState()))
       setBackup(readBackup())
       replaceAll(data)
       setStatus({
-        kind: 'ok',
-        msg: `已匯入 ${data.subscriptions.length} 筆訂閱、${data.charges.length} 筆扣款；匯入前的資料已存成快照，可用「還原匯入前」回復`,
+        kind: backed ? 'ok' : 'err',
+        msg: backed
+          ? `已匯入 ${data.subscriptions.length} 筆訂閱、${data.charges.length} 筆扣款；匯入前的資料已存成快照，可用「還原匯入前」回復`
+          : `已匯入 ${data.subscriptions.length} 筆訂閱、${data.charges.length} 筆扣款，但快照寫入失敗（瀏覽器儲存空間可能已滿），無法還原`,
       })
     } catch (err) {
       setStatus({ kind: 'err', msg: err instanceof Error ? err.message : '匯入失敗' })
@@ -81,8 +86,15 @@ export function SettingsPage() {
               <Input
                 type="number"
                 step="0.01"
-                value={settings.defaultRate}
-                onChange={(e) => setSettings({ defaultRate: Number(e.target.value) || 0 })}
+                value={rateDraft}
+                onChange={(e) => {
+                  setRateDraft(e.target.value)
+                  const v = Number(e.target.value)
+                  if (Number.isFinite(v) && v > 0) setSettings({ defaultRate: v })
+                }}
+                onBlur={() => {
+                  if (!(Number(rateDraft) > 0)) setRateDraft(String(settings.defaultRate))
+                }}
                 className="font-mono"
               />
             </Field>
@@ -90,8 +102,16 @@ export function SettingsPage() {
               <Input
                 type="number"
                 step="0.1"
-                value={Number((settings.feeRate * 100).toFixed(2))}
-                onChange={(e) => setSettings({ feeRate: (Number(e.target.value) || 0) / 100 })}
+                value={feeDraft}
+                onChange={(e) => {
+                  setFeeDraft(e.target.value)
+                  const v = Number(e.target.value)
+                  if (Number.isFinite(v) && v >= 0 && v <= 20) setSettings({ feeRate: v / 100 })
+                }}
+                onBlur={() => {
+                  const v = Number(feeDraft)
+                  if (!(v >= 0 && v <= 20)) setFeeDraft(String(Number((settings.feeRate * 100).toFixed(2))))
+                }}
                 className="font-mono"
               />
             </Field>

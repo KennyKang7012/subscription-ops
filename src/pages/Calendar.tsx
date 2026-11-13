@@ -17,7 +17,8 @@ export function CalendarPage({ handlers }: { handlers: ModalHandlers }) {
 
   const [month, setMonth] = useState(currentMonthKey())
   const data = useMemo(() => ({ subscriptions, charges, fxRates, settings }), [subscriptions, charges, fxRates, settings])
-  const stat = useMemo(() => computeMonth(data, month), [data, month])
+  // 日曆永遠用現金流：攤提會把年繳攤到月底，日曆就會變成一天暴量、其他天空白
+  const stat = useMemo(() => computeMonth(data, month, 'cash'), [data, month])
 
   const dc = settings.displayCurrency
   const rate = stat.rate.rate
@@ -114,7 +115,7 @@ export function CalendarPage({ handlers }: { handlers: ModalHandlers }) {
       <Card>
         <CardTitle
           title="扣款日曆"
-          hint="點任何一天可以補登該日扣款；只有一筆時會自動帶入那個訂閱"
+          hint="點任何一天可以補登該日扣款；只有一筆時會自動帶入那個訂閱。本頁固定以現金流呈現"
           right={
             <div className="flex flex-wrap items-center gap-2.5">
               {CATEGORY_ORDER.map((c) => (

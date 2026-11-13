@@ -152,3 +152,71 @@ describe('removeSubscription', () => {
     expect(useStore.getState().charges).toHaveLength(0)
   })
 })
+
+describe('表單路徑（會把整份資料含舊 endedAt 送回來）', () => {
+  it('取消後隔天用表單改回訂閱中，結束日仍會被清掉（回歸測試）', () => {
+    const id = useStore.getState().addSubscription(makeSub({ status: 'active', startedAt: '2026-01-01' }))
+    useStore.getState().updateSubscription(id, { status: 'cancelled' })
+    const stopped = useStore.getState().subscriptions.find((s) => s.id === id)!
+    expect(stopped.endedAt).toBe(todayISO())
+
+    // SubscriptionForm 送出的是整份 form，endedAt 是「舊值」而不是 undefined
+    useStore.getState().updateSubscription(id, {
+      name: stopped.name,
+      vendor: stopped.vendor,
+      category: stopped.category,
+      amount: stopped.amount,
+      currency: stopped.currency,
+      cycle: stopped.cycle,
+      anchorDay: stopped.anchorDay,
+      anchorMonth: stopped.anchorMonth,
+      startedAt: stopped.startedAt,
+      endedAt: stopped.endedAt,
+      trialEndsAt: stopped.trialEndsAt,
+      status: 'active',
+      seats: stopped.seats,
+      note: stopped.note,
+    })
+
+    const sub = useStore.getState().subscriptions.find((s) => s.id === id)!
+    expect(sub.status).toBe('active')
+    expect(sub.endedAt).toBeNull()
+  })
+
+  it('表單同時把結束日改成新日期時，會保留新值', () => {
+    const id = useStore.getState().addSubscription(makeSub({ status: 'active' }))
+    useStore.getState().updateSubscription(id, { status: 'cancelled' })
+    const stopped = useStore.getState().subscriptions.find((s) => s.id === id)!
+    useStore.getState().updateSubscription(id, {
+      ...stopped,
+      status: 'active',
+      endedAt: '2026-06-30',
+    })
+    expect(useStore.getState().subscriptions.find((s) => s.id === id)!.endedAt).toBe('2026-06-30')
+  })
+})
+
+describe('setSettings：不讓壞值流進計算', () => {
+  it('匯率 0 或負數不會被寫入', () => {
+    useStore.getState().setSettings({ defaultRate: 0 })
+    expect(useStore.getState().settings.defaultRate).toBe(defaultSettings.defaultRate)
+    useStore.getState().setSettings({ defaultRate: -5 })
+    expect(useStore.getState().settings.defaultRate).toBe(defaultSettings.defaultRate)
+    useStore.getState().setSettings({ defaultRate: 33.5 })
+    expect(useStore.getState().settings.defaultRate).toBe(33.5)
+  })
+
+  it('手續費負數或離譜大的值不會被寫入', () => {
+    useStore.getState().setSettings({ feeRate: -0.1 })
+    expect(useStore.getState().settings.feeRate).toBe(defaultSettings.feeRate)
+    useStore.getState().setSettings({ feeRate: 0.5 })
+    expect(useStore.getState().settings.feeRate).toBe(defaultSettings.feeRate)
+    useStore.getState().setSettings({ feeRate: 0.02 })
+    expect(useStore.getState().settings.feeRate).toBe(0.02)
+  })
+
+  it('預算不會是負數', () => {
+    useStore.getState().setSettings({ monthlyBudgetTwd: -100 })
+    expect(useStore.getState().settings.monthlyBudgetTwd).toBe(0)
+  })
+})

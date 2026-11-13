@@ -121,3 +121,17 @@ describe('匯入前快照', () => {
     expect(readBackup()).toBeNull()
   })
 })
+
+describe('匯入驗證對不存在的日期', () => {
+  it('2026-02-30 這種「格式對但不存在」的日期會被擋下', () => {
+    const bad = makeData({ charges: [makeCharge({ chargedAt: '2026-02-30' })] })
+    const r = validateAppData(bad)
+    expect(r.ok).toBe(false)
+  })
+
+  it('2026-13-01 會被擋下', () => {
+    const bad = makeData({ subscriptions: [makeSub({ startedAt: '2026-13-01' })] })
+    const r = validateAppData(bad)
+    expect(r.ok).toBe(false)
+  })
+})

@@ -1,6 +1,6 @@
 import type { AppData, Charge, Category, Currency, FxRate, Settings, Subscription } from '../types'
 import { CATEGORY_ORDER } from './money'
-import { todayISO } from './date'
+import { isRealISODate, todayISO } from './date'
 
 /* ── JSON 匯出 ─────────────────────────────────────── */
 
@@ -27,7 +27,7 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 const isStr = (v: unknown): v is string => typeof v === 'string'
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
-const isDate = (v: unknown): v is string => isStr(v) && /^\d{4}-\d{2}-\d{2}$/.test(v)
+const isDate = isRealISODate
 
 export type ValidationResult = { ok: true; data: AppData } | { ok: false; error: string }
 
@@ -54,6 +54,10 @@ export function validateAppData(raw: unknown): ValidationResult {
     if (!isNum(s.amount)) return { ok: false, error: `${at} 的 amount 不是數字` }
     if (!CURRENCIES.includes(s.currency as Currency)) {
       return { ok: false, error: `${at} 的 currency 不支援（只接受 USD / TWD）` }
+    }
+    // 缺欄位可以補預設（舊備份相容），但「有填卻是壞日期」要明確擋下來
+    if (s.startedAt != null && !isDate(s.startedAt)) {
+      return { ok: false, error: `${at} 的 startedAt 不是有效日期` }
     }
     subs.push({
       id: s.id,
@@ -169,11 +173,13 @@ export interface BackupSlot {
   data: AppData
 }
 
-export function saveBackup(data: AppData): void {
+export function saveBackup(data: AppData): boolean {
   try {
     localStorage.setItem(BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data }))
+    return true
   } catch {
-    // 容量不足或隱私模式：備份失敗不該擋住匯入，只是少一層保險
+    // 容量不足或隱私模式：備份失敗不該擋住匯入，但要把結果回報給 UI
+    return false
   }
 }
 

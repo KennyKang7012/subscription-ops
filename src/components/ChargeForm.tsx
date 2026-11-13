@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Charge, Currency } from '../types'
-import { billingDateInMonth, currentMonthKey, monthKeyOf, todayISO } from '../lib/date'
+import { billingDateInMonth, currentMonthKey, isRealISODate, monthKeyOf, todayISO } from '../lib/date'
 import { resolveRate } from '../lib/fx'
 import { fmtMoney, round2, splitCharge } from '../lib/money'
 import { useStore } from '../store/useStore'
@@ -75,6 +75,7 @@ export function ChargeForm({
 
   const submit = () => {
     if (!subscriptionId) return setError('請先建立一個訂閱，或選擇要補登的訂閱')
+    if (!isRealISODate(chargedAt)) return setError('請選擇有效的扣款日期')
     if (!(amountOriginal > 0)) return setError('金額必須大於 0')
     if (currency === 'USD' && !(fxRate > 0)) return setError('匯率必須大於 0')
 

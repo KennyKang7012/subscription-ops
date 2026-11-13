@@ -71,10 +71,12 @@ export const useStore = create<Store>()(
             const wasStopped = x.status === 'cancelled' || x.status === 'paused'
             const isStopped = next.status === 'cancelled' || next.status === 'paused'
 
-            // 從暫停／取消恢復成訂閱中：清除當初自動補上的結束日。
-            // 這裡不看日期，隔天才恢復也要能清掉，否則整筆訂閱會繼續被排除。
+            // 從暫停／取消恢復成訂閱中：清除結束日。
+            // 注意：表單每次都會把整份資料（含舊的 endedAt）送回來，所以不能只看
+            // 「有沒有帶 endedAt」，要比對「是不是真的改了」，否則表單路徑永遠清不掉。
             if (wasStopped && !isStopped) {
-              return { ...next, endedAt: patch.endedAt ?? null }
+              const explicitlyChanged = patch.endedAt !== undefined && patch.endedAt !== x.endedAt
+              return { ...next, endedAt: explicitlyChanged ? (patch.endedAt ?? null) : null }
             }
 
             return normalizeEndedAt(next)
@@ -155,7 +157,19 @@ export const useStore = create<Store>()(
 
       removeFxRate: (id) => set((s) => ({ fxRates: s.fxRates.filter((r) => r.id !== id) })),
 
-      setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
+      setSettings: (patch) =>
+        set((s) => {
+          const next = { ...s.settings, ...patch }
+          return {
+            settings: {
+              ...next,
+              // 防止 0 或負數流進計算：匯率 0 會讓美金估算變 0，負手續費會把支出扣掉
+              defaultRate: next.defaultRate > 0 ? next.defaultRate : s.settings.defaultRate,
+              feeRate: next.feeRate >= 0 && next.feeRate <= 0.2 ? next.feeRate : s.settings.feeRate,
+              monthlyBudgetTwd: Math.max(0, Math.round(next.monthlyBudgetTwd || 0)),
+            },
+          }
+        }),
 
       replaceAll: (data) => set(() => ({ ...data })),
 

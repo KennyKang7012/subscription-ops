@@ -30,9 +30,19 @@ class MemoryStorage implements Storage {
   }
 }
 
-if (typeof globalThis.localStorage === 'undefined') {
-  Object.defineProperty(globalThis, 'localStorage', {
-    value: new MemoryStorage(),
+// 無條件覆蓋：Node 22+ 的 localStorage 是「未啟用就拋錯」的 getter，
+// 用 typeof 檢查反而會讓 zustand 拿不到可用的 storage。
+Object.defineProperty(globalThis, 'localStorage', {
+  value: new MemoryStorage(),
+  configurable: true,
+  writable: true,
+})
+
+// zustand v5 的 persist 預設讀 window.localStorage，node 底下沒有 window，
+// 少了這行會讓 store 的持久化在測試中靜默失效（連 migrate 都測不到）。
+if (typeof (globalThis as { window?: unknown }).window === 'undefined') {
+  Object.defineProperty(globalThis, 'window', {
+    value: globalThis,
     configurable: true,
     writable: true,
   })

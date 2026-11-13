@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Category, Currency, Cycle, Subscription, SubStatus } from '../types'
 import { CATEGORY_META, CATEGORY_ORDER, CYCLE_LABEL, STATUS_LABEL, splitCharge } from '../lib/money'
-import { currentMonthKey, todayISO } from '../lib/date'
+import { currentMonthKey, isRealISODate, todayISO } from '../lib/date'
 import { resolveRate } from '../lib/fx'
 import { useStore } from '../store/useStore'
 import { Button, Field, Input, Modal, Select, cn } from './ui'
@@ -60,6 +60,10 @@ export function SubscriptionForm({
     if (!(form.amount > 0)) return setError('金額必須大於 0')
     if (form.anchorDay < 1 || form.anchorDay > 31) return setError('扣款日需介於 1 到 31')
     if (form.cycle === 'yearly' && (form.anchorMonth ?? 0) < 1) return setError('年繳請選擇扣款月份')
+    // 日期被清空時不可送出：空字串會讓這筆訂閱在每個月都被誤算
+    if (!isRealISODate(form.startedAt)) return setError('請選擇有效的開始訂閱日')
+    if (form.endedAt && !isRealISODate(form.endedAt)) return setError('結束日格式不正確')
+    if (form.endedAt && form.endedAt < form.startedAt) return setError('結束日不可早於開始日')
 
     if (initial) {
       updateSubscription(initial.id, { ...form, name: form.name.trim(), vendor: form.vendor.trim() })

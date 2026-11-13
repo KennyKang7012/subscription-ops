@@ -5,11 +5,13 @@ import {
   clampDate,
   daysBetweenISO,
   isActiveInMonth,
+  isRealISODate,
   lastNMonths,
   monthBounds,
   monthKeyOf,
   nextChargeDate,
   toISO,
+  todayISO,
 } from '../date'
 
 describe('clampDate', () => {
@@ -105,5 +107,29 @@ describe('isActiveInMonth', () => {
   })
   it('結束日之後不計', () => {
     expect(isActiveInMonth(sub, '2026-09')).toBe(false)
+  })
+})
+
+describe('isRealISODate', () => {
+  it('擋掉格式對但不存在的日期', () => {
+    expect(isRealISODate('2026-02-30')).toBe(false)
+    expect(isRealISODate('2026-13-01')).toBe(false)
+    expect(isRealISODate('2024-02-29')).toBe(true)
+    expect(isRealISODate('2026-02-28')).toBe(true)
+  })
+
+  it('擋掉空字串與非字串', () => {
+    expect(isRealISODate('')).toBe(false)
+    expect(isRealISODate(null)).toBe(false)
+    expect(isRealISODate('2026/11/08')).toBe(false)
+  })
+})
+
+describe('isActiveInMonth 對壞資料的容錯', () => {
+  it('開始日是空字串時不會被當成 1970（避免歷史長出假估算）', () => {
+    const sub = { cycle: 'monthly', anchorDay: 8, anchorMonth: null, startedAt: '', endedAt: null }
+    expect(isActiveInMonth(sub, '2020-01')).toBe(false)
+    const now = todayISO().slice(0, 7)
+    expect(isActiveInMonth(sub, now)).toBe(true)
   })
 })

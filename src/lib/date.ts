@@ -11,6 +11,12 @@ export function toISO(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 }
 
+/** 真正的日期：格式正確而且存在（2026-13-01、2026-02-30 會被擋下來） */
+export function isRealISODate(v: unknown): v is string {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false
+  return toISO(parseISO(v)) === v
+}
+
 export function todayISO(): string {
   return toISO(new Date())
 }
@@ -87,8 +93,9 @@ export interface Billable {
 /** 這個訂閱在指定月份是否為「計費中」 */
 export function isActiveInMonth(sub: Billable, monthKey: string): boolean {
   const { start, end } = monthBounds(monthKey)
-  const from = sub.startedAt || '1970-01-01'
-  const to = sub.endedAt ?? '9999-12-31'
+  // 壞掉的開始日不能當成 1970，否則會在整段歷史裡長出根本不存在的估算
+  const from = isRealISODate(sub.startedAt) ? sub.startedAt : todayISO()
+  const to = isRealISODate(sub.endedAt) ? sub.endedAt : '9999-12-31'
   return from <= end && to >= start
 }
 
