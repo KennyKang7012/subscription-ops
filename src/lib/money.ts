@@ -11,6 +11,22 @@ export function toTwd(amount: number, currency: Currency, usdTwd: number): numbe
   return round2(currency === 'TWD' ? amount : amount * usdTwd)
 }
 
+/**
+ * 一筆扣款的台幣拆分：原幣換算 + 國外交易手續費。
+ * 實帳、估算、即將扣款、一鍵補登全部走這裡，確保口徑一致。
+ * 台幣計價的服務為國內交易，不收國外交易手續費。
+ */
+export function splitCharge(
+  amount: number,
+  currency: Currency,
+  usdTwd: number,
+  feeRate: number,
+): { base: number; feeTwd: number; total: number } {
+  const base = toTwd(amount, currency, usdTwd)
+  const feeTwd = currency === 'TWD' ? 0 : round2(base * feeRate)
+  return { base, feeTwd, total: round2(base + feeTwd) }
+}
+
 export function fromTwd(twd: number, currency: Currency, usdTwd: number): number {
   if (currency === 'TWD') return round2(twd)
   return round2(twd / (usdTwd || 1))

@@ -3,8 +3,9 @@ import { persist } from 'zustand/middleware'
 import type { AppData, Charge, FxRate, Settings, Subscription } from '../types'
 import { createSeedData } from '../lib/seed'
 import { uid } from '../lib/id'
-import { round2 } from '../lib/money'
+import { splitCharge } from '../lib/money'
 import { monthKeyOf, todayISO } from '../lib/date'
+import { hasChargeInMonth } from '../lib/analytics'
 
 export interface Actions {
   addSubscription: (input: Omit<Subscription, 'id' | 'createdAt'>) => string
@@ -16,8 +17,12 @@ export interface Actions {
   addCharge: (input: Omit<Charge, 'id'>) => string
   updateCharge: (id: string, patch: Partial<Charge>) => void
   removeCharge: (id: string) => void
-  /** 依訂閱定義 + 匯率自動補一筆當月扣款 */
-  logChargeFor: (subscriptionId: string, dateISO?: string) => void
+  /**
+   * 依訂閱定義 + 匯率自動補一筆當月扣款。
+   * 同一個訂閱、同一個月份只會有一筆，重複呼叫不會重複計入。
+   * @returns true 表示真的新增了，false 表示該月已有紀錄或找不到訂閱
+   */
+  logChargeFor: (subscriptionId: string, dateISO?: string) => boolean
 
   addFxRate: (rate: Omit<FxRate, 'id'>) => void
   updateFxRate: (id: string, patch: Partial<FxRate>) => void
@@ -53,14 +58,16 @@ export const useStore = create<Store>()(
 
       addSubscription: (input) => {
         const id = uid('sub')
-        const sub: Subscription = { ...input, id, createdAt: todayISO() }
+        const sub: Subscription = normalizeEndedAt({ ...input, id, createdAt: todayISO() })
         set((s) => ({ subscriptions: [...s.subscriptions, sub] }))
         return id
       },
 
       updateSubscription: (id, patch) =>
         set((s) => ({
-          subscriptions: s.subscriptions.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+          subscriptions: s.subscriptions.map((x) =>
+            x.id === id ? normalizeEndedAt({ ...x, ...patch }) : x,
+          ),
         })),
 
       removeSubscription: (id) =>
@@ -69,17 +76,8 @@ export const useStore = create<Store>()(
           charges: s.charges.filter((c) => c.subscriptionId !== id),
         })),
 
-      setStatus: (id, status) =>
-        set((s) => ({
-          subscriptions: s.subscriptions.map((x) => {
-            if (x.id !== id) return x
-            if (status === 'paused' || status === 'cancelled') {
-              const alreadyEnded = x.endedAt && x.endedAt < todayISO()
-              return { ...x, status, endedAt: alreadyEnded ? x.endedAt : todayISO() }
-            }
-            return { ...x, status, endedAt: null }
-          }),
-        })),
+      // 結束日的補值統一由 updateSubscription → normalizeEndedAt 處理
+      setStatus: (id, status) => get().updateSubscription(id, { status }),
 
       addCharge: (input) => {
         const id = uid('chg')
@@ -95,10 +93,14 @@ export const useStore = create<Store>()(
       logChargeFor: (subscriptionId, dateISO) => {
         const state = get()
         const sub = state.subscriptions.find((s) => s.id === subscriptionId)
-        if (!sub) return
-        const date = dateISO ?? todayISO()
+        if (!sub) return false
+
+        const date = dateISO && dateISO <= todayISO() ? dateISO : todayISO()
         const month = monthKeyOf(date)
-        // 沿用該訂閱最近一筆的匯率，沒有就用解析出來的
+        // 一鍵補登要去重：同一個訂閱在同一個月只算一次，避免連點重複計入
+        if (hasChargeInMonth(state, subscriptionId, month)) return false
+
+        // 沿用該訂閱最近一筆的匯率，沒有就用最近一筆市場匯率
         const past = state.charges
           .filter((c) => c.subscriptionId === subscriptionId && c.currency === 'USD')
           .sort((a, b) => b.chargedAt.localeCompare(a.chargedAt))
@@ -106,20 +108,24 @@ export const useStore = create<Store>()(
           .filter((r) => r.date <= date)
           .sort((a, b) => a.date.localeCompare(b.date))
           .pop()
-        const fx = sub.currency === 'TWD' ? 1 : (past[0]?.fxRate ?? fallback?.rate ?? state.settings.defaultRate)
-        const base = sub.currency === 'TWD' ? sub.amount : round2(sub.amount * fx)
-        const feeTwd = sub.currency === 'TWD' ? 0 : round2(base * state.settings.feeRate)
+        const fx =
+          sub.currency === 'TWD'
+            ? 1
+            : (past[0]?.fxRate ?? fallback?.rate ?? state.settings.defaultRate)
+        const { feeTwd, total } = splitCharge(sub.amount, sub.currency, fx, state.settings.feeRate)
+
         get().addCharge({
           subscriptionId,
-          chargedAt: date > todayISO() ? todayISO() : date,
+          chargedAt: date,
           amountOriginal: sub.amount,
           currency: sub.currency,
           fxRate: fx,
           feeTwd,
-          amountTwd: round2(base + feeTwd),
+          amountTwd: total,
           source: 'manual',
           note: `自動補登（${month}）`,
         })
+        return true
       },
 
       // 同一天、同來源的匯率視為同一筆（自動更新重複呼叫時不會長出重複資料）
@@ -177,4 +183,19 @@ export function snapshot(state: Store): AppData {
     fxRates: state.fxRates,
     settings: state.settings,
   }
+}
+
+/**
+ * 狀態改成暫停／取消時，若沒有結束日就補上今天。
+ * 少了這個，歷史月份會被整個排除（isBillableInMonth 的舊資料防線只是備援）。
+ */
+function normalizeEndedAt(sub: Subscription): Subscription {
+  if ((sub.status === 'cancelled' || sub.status === 'paused') && !sub.endedAt) {
+    return { ...sub, endedAt: todayISO() }
+  }
+  // 恢復成訂閱中／試用中時，清掉「因暫停而自動補上」的結束日
+  if ((sub.status === 'active' || sub.status === 'trial') && sub.endedAt === todayISO()) {
+    return { ...sub, endedAt: null }
+  }
+  return sub
 }

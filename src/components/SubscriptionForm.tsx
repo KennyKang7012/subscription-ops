@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { Category, Currency, Cycle, Subscription, SubStatus } from '../types'
-import { CATEGORY_META, CATEGORY_ORDER, CYCLE_LABEL, STATUS_LABEL, toTwd } from '../lib/money'
-import { todayISO } from '../lib/date'
+import { CATEGORY_META, CATEGORY_ORDER, CYCLE_LABEL, STATUS_LABEL, splitCharge } from '../lib/money'
+import { currentMonthKey, todayISO } from '../lib/date'
+import { resolveRate } from '../lib/fx'
 import { useStore } from '../store/useStore'
 import { Button, Field, Input, Modal, Select, cn } from './ui'
 
@@ -35,16 +36,19 @@ export function SubscriptionForm({
   const updateSubscription = useStore((s) => s.updateSubscription)
   const settings = useStore((s) => s.settings)
   const fxRates = useStore((s) => s.fxRates)
+  const charges = useStore((s) => s.charges)
+  const subscriptions = useStore((s) => s.subscriptions)
 
   const [form, setForm] = useState<Omit<Subscription, 'id' | 'createdAt'>>(() =>
     initial ? stripMeta(initial) : blank(),
   )
   const [error, setError] = useState('')
 
-  const rate = (() => {
-    const sorted = [...fxRates].sort((a, b) => a.date.localeCompare(b.date))
-    return sorted[sorted.length - 1]?.rate ?? settings.defaultRate
-  })()
+  // 跟儀表板用同一套匯率解析，避免表單顯示的數字跟 KPI 不一樣
+  const rate = resolveRate(
+    { subscriptions, charges, fxRates, settings },
+    currentMonthKey(),
+  ).rate
 
   const set = <K extends keyof Omit<Subscription, 'id' | 'createdAt'>>(
     key: K,
@@ -65,11 +69,13 @@ export function SubscriptionForm({
     onClose()
   }
 
-  const monthlyHint = toTwd(
+  // 等效月支出與儀表板同口徑：年繳 ÷12，且含國外交易手續費
+  const monthlyHint = splitCharge(
     form.cycle === 'yearly' ? form.amount / 12 : form.cycle === 'monthly' ? form.amount : 0,
     form.currency,
     rate,
-  )
+    settings.feeRate,
+  ).total
 
   return (
     <Modal
@@ -228,7 +234,7 @@ export function SubscriptionForm({
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line/70 bg-panel2/50 px-3.5 py-2.5">
         <span className="text-[11px] text-muted">
-          等效月支出
+          等效月支出（含手續費）
           <span className="ml-1.5 font-mono text-slate-200">NT${Math.round(monthlyHint).toLocaleString()}</span>
           <span className="ml-1.5">（匯率 {rate}）</span>
         </span>

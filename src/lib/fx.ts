@@ -28,7 +28,7 @@ export const RATE_SOURCE_META: Record<RateSource, { label: string; hex: string; 
     label: '手動',
     hex: '#22d3ee',
     badge: 'bg-brand/12 text-brand ring-brand/30',
-    hint: '採用你在設定頁手動填入的當月匯率',
+    hint: '採用手動填入的匯率（該月或最近一次設定）',
   },
   market: {
     label: '市場',
@@ -72,10 +72,19 @@ export function resolveRate(data: AppData, monthKey: string): ResolvedRate {
   }
 
   const { end } = monthBounds(month)
-  const past = sorted.filter((r) => r.date <= end)
-  if (past.length) {
-    const last = past[past.length - 1]
+
+  // 3) 該月（含之前）最後一筆「市場」匯率
+  const marketBefore = sorted.filter((r) => r.source === 'market' && r.date <= end)
+  if (marketBefore.length) {
+    const last = marketBefore[marketBefore.length - 1]
     return { rate: last.rate, source: 'market', from: last.date }
+  }
+
+  // 3.5) 沒有市場匯率時，沿用最近一次手動設定的值（但標示為手動，不可冒充市場）
+  const manualAny = sorted.filter((r) => r.source === 'manual')
+  if (manualAny.length) {
+    const last = manualAny[manualAny.length - 1]
+    return { rate: last.rate, source: 'manual', from: last.date }
   }
 
   return { rate: data.settings.defaultRate, source: 'default', from: toISO(parseISO(month + '-01')) }

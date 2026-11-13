@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
-import { Download, FileText, Printer, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { Download, FileText, History, Printer, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useStore, snapshot } from '../store/useStore'
-import { downloadJSON, readJSONFile } from '../lib/file'
+import { downloadJSON, readJSONFile, readBackup, saveBackup, type BackupSlot } from '../lib/file'
 import { buildChargesCsv, csvFilename, downloadText, CSV_RANGE_LABEL, type CsvRange } from '../lib/csv'
 import { printMonthlyReport, reportTotals } from '../lib/report'
 import { currentMonthKey, monthLabelFull } from '../lib/date'
@@ -21,6 +21,7 @@ export function SettingsPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
+  const [backup, setBackup] = useState<BackupSlot | null>(() => readBackup())
   const [csvRange, setCsvRange] = useState<CsvRange>('month')
   const [csvMonth, setCsvMonth] = useState(currentMonthKey())
 
@@ -31,8 +32,14 @@ export function SettingsPage() {
     if (!file) return
     try {
       const data = await readJSONFile(file)
+      // 匯入會直接覆蓋本機資料，先留一份快照，匯錯還能救回來
+      saveBackup(snapshot(useStore.getState()))
+      setBackup(readBackup())
       replaceAll(data)
-      setStatus({ kind: 'ok', msg: `已匯入 ${data.subscriptions.length} 筆訂閱、${data.charges.length} 筆扣款` })
+      setStatus({
+        kind: 'ok',
+        msg: `已匯入 ${data.subscriptions.length} 筆訂閱、${data.charges.length} 筆扣款；匯入前的資料已存成快照，可用「還原匯入前」回復`,
+      })
     } catch (err) {
       setStatus({ kind: 'err', msg: err instanceof Error ? err.message : '匯入失敗' })
     }
@@ -204,6 +211,21 @@ export function SettingsPage() {
               e.target.value = ''
             }}
           />
+          <Button
+            variant="outline"
+            disabled={!backup}
+            title={backup ? `快照時間：${new Date(backup.savedAt).toLocaleString('zh-TW')}` : '目前沒有快照'}
+            onClick={() => {
+              if (!backup) return
+              replaceAll(backup.data)
+              setStatus({
+                kind: 'ok',
+                msg: `已還原 ${new Date(backup.savedAt).toLocaleString('zh-TW')} 的快照（${backup.data.subscriptions.length} 筆訂閱、${backup.data.charges.length} 筆扣款）`,
+              })
+            }}
+          >
+            <History size={14} /> 還原匯入前
+          </Button>
           <Button
             variant="outline"
             onClick={() => {

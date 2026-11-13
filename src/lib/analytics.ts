@@ -12,18 +12,33 @@ import {
   parseISO,
 } from './date'
 import { resolveRate, type ResolvedRate } from './fx'
-import { CATEGORY_ORDER, round2, toTwd } from './money'
+import { CATEGORY_ORDER, round2, splitCharge } from './money'
 
 export function emptyByCategory(): Record<Category, number> {
   return { ai: 0, writing: 0, video: 0, infra: 0, other: 0 }
 }
 
-/** 這個月要不要算它（暫停/取消且沒有結束日 → 不算） */
+/** 這個月要不要算它 */
 export function isBillableInMonth(sub: Subscription, monthKey: string): boolean {
-  if (sub.status === 'cancelled' || sub.status === 'paused') {
-    if (!sub.endedAt) return false
+  if (!isActiveInMonth(sub, monthKey)) return false
+  // 被標成暫停／取消但沒有結束日（舊資料，或表單直接改狀態）：
+  // 一律視為「從今天起停止」，歷史月份仍然計入，避免整段歷史消失
+  if ((sub.status === 'cancelled' || sub.status === 'paused') && !sub.endedAt) {
+    return monthKey < monthKeyOf(todayISO())
   }
-  return isActiveInMonth(sub, monthKey)
+  return true
+}
+
+/** 該訂閱在該月是否已經有扣款紀錄（一鍵補登的去重依據） */
+export function hasChargeInMonth(data: AppData, subscriptionId: string, monthKey: string): boolean {
+  return data.charges.some(
+    (c) => c.subscriptionId === subscriptionId && monthKeyOf(c.chargedAt) === monthKey,
+  )
+}
+
+/** 估算一筆扣款會扣多少台幣（含國外交易手續費，與實帳口徑一致） */
+export function estimateChargeTwd(sub: Subscription, rate: number, feeRate: number): number {
+  return splitCharge(sub.amount, sub.currency, rate, feeRate).total
 }
 
 /** 攤提後的等效月費（原幣） */
@@ -95,6 +110,8 @@ export function computeMonth(data: AppData, monthKey: string, basis: Basis = dat
     for (const sub of data.subscriptions) {
       if (!isBillableInMonth(sub, monthKey)) continue
       if (sub.status === 'trial') continue
+      // 暫停中的訂閱不再產生攤提費用
+      if (sub.status === 'paused') continue
       const per = monthlyEquivalent(sub)
       if (per <= 0) continue
       items.push({
@@ -102,7 +119,7 @@ export function computeMonth(data: AppData, monthKey: string, basis: Basis = dat
         subscriptionId: sub.id,
         name: sub.name,
         category: sub.category,
-        twd: toTwd(per, sub.currency, rate.rate),
+        twd: splitCharge(per, sub.currency, rate.rate, data.settings.feeRate).total,
         kind: 'estimate',
         date: end,
       })
@@ -113,6 +130,8 @@ export function computeMonth(data: AppData, monthKey: string, basis: Basis = dat
     for (const sub of data.subscriptions) {
       if (!isBillableInMonth(sub, monthKey)) continue
       if (charged.has(sub.id)) continue
+      // 暫停中的訂閱不排入估算（當月若真的扣了，會靠補登的實際紀錄出現）
+      if (sub.status === 'paused') continue
       const billDate = billingDateInMonth(sub, monthKey)
       if (!billDate) continue
       items.push({
@@ -120,7 +139,7 @@ export function computeMonth(data: AppData, monthKey: string, basis: Basis = dat
         subscriptionId: sub.id,
         name: sub.name,
         category: sub.category,
-        twd: toTwd(sub.amount, sub.currency, rate.rate),
+        twd: estimateChargeTwd(sub, rate.rate, data.settings.feeRate),
         kind: 'estimate',
         date: billDate,
       })
@@ -221,7 +240,7 @@ export function upcomingCharges(data: AppData, withinDays = 45): UpcomingItem[] 
       amount: sub.amount,
       date: next,
       days,
-      twd: toTwd(sub.amount, sub.currency, rate.rate),
+      twd: estimateChargeTwd(sub, rate.rate, data.settings.feeRate),
     })
   }
   return out.sort((a, b) => a.date.localeCompare(b.date))
@@ -295,7 +314,7 @@ export function buildInsights(data: AppData): Insight[] {
     const sameCat = active.filter((s) => s.category === cat)
     if (sameCat.length >= 2) {
       const names = sameCat.map((s) => s.name).join('、')
-      const monthly = sameCat.map((s) => toTwd(monthlyEquivalent(s), s.currency, rate.rate))
+      const monthly = sameCat.map((s) => splitCharge(monthlyEquivalent(s), s.currency, rate.rate, data.settings.feeRate).total)
       const keep = Math.max(...monthly)
       const save = (monthly.reduce((a, b) => a + b, 0) - keep) * 12
       out.push({
@@ -415,7 +434,7 @@ export function monthDelta(data: AppData, monthKey: string): { diff: number; pct
 export function annualCostTwd(data: AppData, sub: Subscription): number {
   const rate = resolveRate(data, monthKeyOf(todayISO()))
   const per = monthlyEquivalent(sub)
-  return round2(toTwd(per, sub.currency, rate.rate) * 12)
+  return round2(splitCharge(per, sub.currency, rate.rate, data.settings.feeRate).total * 12)
 }
 
 /** 產生一段可讀的日期區間，例如 3/8 起 */

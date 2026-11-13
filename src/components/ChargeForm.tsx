@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Charge, Currency } from '../types'
 import { billingDateInMonth, currentMonthKey, monthKeyOf, todayISO } from '../lib/date'
 import { resolveRate } from '../lib/fx'
-import { fmtMoney, round2 } from '../lib/money'
+import { fmtMoney, round2, splitCharge } from '../lib/money'
 import { useStore } from '../store/useStore'
 import { Button, Field, Input, Modal, Select } from './ui'
 
@@ -56,8 +56,10 @@ export function ChargeForm({
   )
 
   const fxRate = currency === 'TWD' ? 1 : fxTouched ? Number(fxInput) || resolved.rate : resolved.rate
-  const base = currency === 'TWD' ? amountOriginal : round2(amountOriginal * fxRate)
-  const feeTwd = feeTouched ? Number(feeInput) || 0 : currency === 'TWD' ? 0 : round2(base * settings.feeRate)
+  // 手續費的預設值跟 store / 估算共用同一個計算（splitCharge）
+  const auto = splitCharge(amountOriginal, currency, fxRate, settings.feeRate)
+  const base = auto.base
+  const feeTwd = feeTouched ? Number(feeInput) || 0 : auto.feeTwd
   const amountTwd = round2(base + feeTwd)
 
   const pickSubscription = (id: string) => {

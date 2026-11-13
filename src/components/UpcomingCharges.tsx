@@ -1,6 +1,6 @@
 import { CalendarClock } from 'lucide-react'
 import type { UpcomingItem } from '../lib/analytics'
-import { CATEGORY_META, CYCLE_LABEL, fmtMoney } from '../lib/money'
+import { CATEGORY_META, fmtMoney } from '../lib/money'
 import { shortDate } from '../lib/date'
 import { Card, CardTitle, Empty, cn } from './ui'
 
@@ -67,20 +67,24 @@ export function UpcomingCharges({
                   </div>
                   <div className="font-mono text-[10px] text-muted">≈ NT${Math.round(it.twd).toLocaleString()}</div>
                 </div>
-                <button
-                  onClick={() => onLog(it.subscriptionId, it.date)}
-                  title="直接補登這筆扣款"
-                  className="cursor-pointer rounded-md p-1.5 text-muted opacity-0 transition hover:bg-white/5 hover:text-brand group-hover:opacity-100"
-                >
-                  <CalendarClock size={14} />
-                </button>
+                {it.days === 0 ? (
+                  <button
+                    onClick={() => onLog(it.subscriptionId, it.date)}
+                    title="今天扣款，直接補登這筆"
+                    className="cursor-pointer rounded-md p-1.5 text-brand transition hover:bg-white/5"
+                  >
+                    <CalendarClock size={14} />
+                  </button>
+                ) : (
+                  <span className="w-[26px]" aria-hidden />
+                )}
               </li>
             )
           })}
         </ul>
       )}
       <div className="mt-auto border-t border-line/60 px-5 py-2 text-[10px] text-muted">
-        {CYCLE_LABEL.monthly} / {CYCLE_LABEL.yearly} 依下次扣款日推算 · 滑過列可補登
+        依下次扣款日推算 · 只有「今天就是扣款日」的項目可以一鍵補登
       </div>
     </Card>
   )

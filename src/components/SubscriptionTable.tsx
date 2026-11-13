@@ -2,7 +2,14 @@ import { useMemo, useState } from 'react'
 import { CalendarPlus, Pencil, Trash2 } from 'lucide-react'
 import type { Category, Subscription } from '../types'
 import { CATEGORY_META, CATEGORY_ORDER, CYCLE_LABEL, STATUS_LABEL, STATUS_STYLE, fmtMoney } from '../lib/money'
-import { nextChargeDate, shortDate, todayISO, daysBetweenISO } from '../lib/date'
+import {
+  billingDateInMonth,
+  currentMonthKey,
+  daysBetweenISO,
+  nextChargeDate,
+  shortDate,
+  todayISO,
+} from '../lib/date'
 import { annualCostTwd } from '../lib/analytics'
 import { useStore } from '../store/useStore'
 import { Badge, Button, Card, CardTitle, Empty, cn } from './ui'
@@ -27,17 +34,28 @@ export function SubscriptionTable({
 
   const [filter, setFilter] = useState<Category | 'all'>('all')
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  const thisMonth = currentMonthKey()
 
   const rows = useMemo(() => {
     const list = subscriptions.filter((s) => (filter === 'all' ? true : s.category === filter))
     return list
-      .map((s) => ({
-        sub: s,
-        next: nextChargeDate(s),
-        annual: annualCostTwd({ subscriptions, charges, fxRates, settings }, s),
-      }))
+      .map((s) => {
+        const billDate = billingDateInMonth(s, thisMonth)
+        const loggedThisMonth = charges.some(
+          (c) => c.subscriptionId === s.id && c.chargedAt.slice(0, 7) === thisMonth,
+        )
+        return {
+          sub: s,
+          next: nextChargeDate(s),
+          annual: annualCostTwd({ subscriptions, charges, fxRates, settings }, s),
+          loggedThisMonth,
+          billDate,
+          // 只有「本月有扣款日、已到期、而且還沒補登」才能一鍵補登，避免提前製造假帳
+          canLog: Boolean(billDate && billDate <= todayISO() && !loggedThisMonth),
+        }
+      })
       .sort((a, b) => b.annual - a.annual)
-  }, [subscriptions, charges, fxRates, settings, filter])
+  }, [subscriptions, charges, fxRates, settings, filter, thisMonth])
 
   const monthlyTotal = rows
     .filter((r) => r.sub.status === 'active' || r.sub.status === 'trial')
@@ -105,7 +123,7 @@ export function SubscriptionTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-line/50">
-              {rows.map(({ sub, next, annual }) => {
+              {rows.map(({ sub, next, annual, loggedThisMonth, billDate, canLog }) => {
                 const meta = CATEGORY_META[sub.category]
                 const days = next ? daysBetweenISO(todayISO(), next) : null
                 return (
@@ -152,9 +170,23 @@ export function SubscriptionTable({
                     <td className="px-3 py-2.5">
                       <div className="flex items-center justify-end gap-1">
                         <button
-                          title="補登本月扣款"
-                          onClick={() => logChargeFor(sub.id)}
-                          className="cursor-pointer rounded-md p-1.5 text-muted transition-colors hover:bg-white/5 hover:text-brand"
+                          title={
+                            canLog
+                              ? '補登本月扣款'
+                              : loggedThisMonth
+                                ? '本月已補登過'
+                                : billDate
+                                  ? `${shortDate(billDate)} 才扣款`
+                                  : '本月不扣款'
+                          }
+                          disabled={!canLog}
+                          onClick={() => logChargeFor(sub.id, billDate ?? undefined)}
+                          className={cn(
+                            'rounded-md p-1.5 transition-colors',
+                            canLog
+                              ? 'cursor-pointer text-muted hover:bg-white/5 hover:text-brand'
+                              : 'cursor-not-allowed text-muted/30',
+                          )}
                         >
                           <CalendarPlus size={14} />
                         </button>
