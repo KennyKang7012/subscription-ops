@@ -6,6 +6,7 @@ import { uid } from '../lib/id'
 import { splitCharge } from '../lib/money'
 import { monthKeyOf, todayISO } from '../lib/date'
 import { hasChargeInMonth } from '../lib/analytics'
+import { sanitizeAppData } from '../lib/file'
 
 export interface Actions {
   addSubscription: (input: Omit<Subscription, 'id' | 'createdAt'>) => string
@@ -179,16 +180,12 @@ export const useStore = create<Store>()(
     }),
     {
       name: 'ai-tools-subscription-v1',
-      version: 2,
-      // v1 → v2：Settings 多了 monthlyBudgetTwd，舊資料要補上預設值
+      version: 3,
+      // v1 → v2：Settings 多了 monthlyBudgetTwd；v2 → v3：清掉存在瀏覽器裡的壞值
+      // （非法 category 會讓畫面直接爆掉、0 匯率會讓美金估算變 0、空日期會在明細裡變成鬼紀錄）
       migrate: (persisted) => {
         const p = (persisted ?? {}) as Partial<AppData>
-        return {
-          subscriptions: p.subscriptions ?? [],
-          charges: p.charges ?? [],
-          fxRates: p.fxRates ?? [],
-          settings: { ...defaultSettings, ...(p.settings ?? {}) },
-        }
+        return sanitizeAppData(p)
       },
       partialize: (s) => ({
         subscriptions: s.subscriptions,

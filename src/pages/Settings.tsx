@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Download, FileText, History, Printer, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useStore, snapshot } from '../store/useStore'
 import { downloadJSON, readJSONFile, readBackup, saveBackup, type BackupSlot } from '../lib/file'
@@ -25,6 +25,20 @@ export function SettingsPage() {
   // 匯率與手續費用草稿字串：邊打字邊清空時不會把 0 送進 store
   const [rateDraft, setRateDraft] = useState(String(settings.defaultRate))
   const [feeDraft, setFeeDraft] = useState(String(Number((settings.feeRate * 100).toFixed(2))))
+
+  // 匯入／還原／清空後 settings 會從外面被改掉，草稿沒跟著同步就會把新值覆寫回去
+  const syncedRate = useRef(settings.defaultRate)
+  const syncedFee = useRef(settings.feeRate)
+  useEffect(() => {
+    if (settings.defaultRate !== syncedRate.current) {
+      syncedRate.current = settings.defaultRate
+      setRateDraft(String(settings.defaultRate))
+    }
+    if (settings.feeRate !== syncedFee.current) {
+      syncedFee.current = settings.feeRate
+      setFeeDraft(String(Number((settings.feeRate * 100).toFixed(2))))
+    }
+  }, [settings.defaultRate, settings.feeRate])
   const [csvRange, setCsvRange] = useState<CsvRange>('month')
   const [csvMonth, setCsvMonth] = useState(currentMonthKey())
 

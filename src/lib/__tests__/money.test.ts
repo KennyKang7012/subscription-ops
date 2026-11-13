@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { splitCharge } from '../money'
-import { clearBackup, readBackup, saveBackup, validateAppData } from '../file'
+import { clearBackup, readBackup, sanitizeAppData, saveBackup, validateAppData } from '../file'
 import { makeCharge, makeData, makeSub } from './fixtures'
 
 describe('splitCharge', () => {
@@ -133,5 +133,56 @@ describe('匯入驗證對不存在的日期', () => {
     const bad = makeData({ subscriptions: [makeSub({ startedAt: '2026-13-01' })] })
     const r = validateAppData(bad)
     expect(r.ok).toBe(false)
+  })
+})
+
+describe('sanitizeAppData（舊資料就地清理）', () => {
+  it('非法 category 會退成 other，避免 CATEGORY_META 取不到而爆掉', () => {
+    const dirty = {
+      subscriptions: [{ id: 'x', name: 'A', amount: 5, currency: 'USD', category: 'foo', startedAt: '2026-01-01' }],
+      charges: [],
+      fxRates: [],
+      settings: { defaultRate: 32 },
+    }
+    const clean = sanitizeAppData(dirty as never)
+    expect(clean.subscriptions[0].category).toBe('other')
+  })
+
+  it('空日期的扣款紀錄會被丟掉，不會變成不屬於任何月份的鬼紀錄', () => {
+    const dirty = {
+      subscriptions: [],
+      charges: [
+        { id: 'c1', subscriptionId: 's1', chargedAt: '', amountTwd: 100 },
+        { id: 'c2', subscriptionId: 's1', chargedAt: '2026-11-08', amountTwd: 100 },
+      ],
+      fxRates: [],
+      settings: {},
+    }
+    const clean = sanitizeAppData(dirty as never)
+    expect(clean.charges.map((c) => c.id)).toEqual(['c2'])
+  })
+
+  it('0 匯率與越界手續費會被換回預設值', () => {
+    const clean = sanitizeAppData({
+      subscriptions: [],
+      charges: [],
+      fxRates: [{ id: 'f1', date: '2026-11-01', pair: 'USD/TWD', rate: 0, source: 'market' }],
+      settings: { defaultRate: 0, feeRate: -1 },
+    } as never)
+    expect(clean.settings.defaultRate).toBe(32)
+    expect(clean.settings.feeRate).toBe(0.015)
+    expect(clean.fxRates).toHaveLength(0)
+  })
+
+  it('壞掉的開始日會退回 createdAt，而不是留著空字串', () => {
+    const clean = sanitizeAppData({
+      subscriptions: [
+        { id: 'x', name: 'A', amount: 5, currency: 'USD', startedAt: '', createdAt: '2026-03-01' },
+      ],
+      charges: [],
+      fxRates: [],
+      settings: { defaultRate: 32 },
+    } as never)
+    expect(clean.subscriptions[0].startedAt).toBe('2026-03-01')
   })
 })

@@ -131,7 +131,8 @@ export function validateAppData(raw: unknown): ValidationResult {
       : 'TWD',
     basis: BASIS.includes(s.basis as string) ? (s.basis as Settings['basis']) : 'cash',
     defaultRate: s.defaultRate,
-    feeRate: isNum(s.feeRate) && s.feeRate >= 0 ? s.feeRate : 0.015,
+    // 匯入也要套用跟 UI 一樣的上限，否則可以繞過 setSettings 的防呆
+    feeRate: isNum(s.feeRate) && s.feeRate >= 0 && s.feeRate <= 0.2 ? s.feeRate : 0.015,
     monthlyBudgetTwd: isNum(s.monthlyBudgetTwd) && s.monthlyBudgetTwd >= 0 ? s.monthlyBudgetTwd : 0,
   }
 
@@ -199,5 +200,88 @@ export function clearBackup(): void {
     localStorage.removeItem(BACKUP_KEY)
   } catch {
     /* 忽略 */
+  }
+}
+
+/* ── 舊資料就地清理（給 persist migrate 用，不拒絕任何資料） ───────── */
+
+/**
+ * 修正「已經存在瀏覽器裡」的壞值。與 validateAppData 不同：
+ * 這裡的原則是「能救就救、救不了就丟」，避免升級後畫面直接壞掉。
+ */
+export function sanitizeAppData(raw: Partial<AppData>): AppData {
+  const subs: Subscription[] = (Array.isArray(raw.subscriptions) ? raw.subscriptions : [])
+    .filter(isObj)
+    .filter((s) => isStr(s.id) && isStr(s.name) && isNum(s.amount))
+    .map((s) => ({
+      id: s.id as string,
+      name: s.name as string,
+      vendor: isStr(s.vendor) ? s.vendor : '',
+      category: (CATEGORY_ORDER.includes(s.category as Category) ? s.category : 'other') as Category,
+      amount: s.amount as number,
+      currency: (CURRENCIES.includes(s.currency as Currency) ? s.currency : 'TWD') as Currency,
+      cycle: (CYCLES.includes(s.cycle as string) ? s.cycle : 'monthly') as Subscription['cycle'],
+      anchorDay: isNum(s.anchorDay) ? Math.min(31, Math.max(1, Math.round(s.anchorDay))) : 1,
+      anchorMonth: isNum(s.anchorMonth) ? Math.min(12, Math.max(1, Math.round(s.anchorMonth))) : null,
+      startedAt: isDate(s.startedAt)
+        ? s.startedAt
+        : isDate(s.createdAt)
+          ? s.createdAt
+          : todayISO(),
+      endedAt: isDate(s.endedAt) ? s.endedAt : null,
+      trialEndsAt: isDate(s.trialEndsAt) ? s.trialEndsAt : null,
+      status: (STATUSES.includes(s.status as string) ? s.status : 'active') as Subscription['status'],
+      seats: isNum(s.seats) && s.seats > 0 ? s.seats : 1,
+      note: isStr(s.note) ? s.note : '',
+      createdAt: isDate(s.createdAt) ? s.createdAt : todayISO(),
+    }))
+
+  // 日期壞掉的扣款紀錄不屬於任何月份，留著只會在明細裡造成混亂
+  const chgs: Charge[] = (Array.isArray(raw.charges) ? raw.charges : [])
+    .filter(isObj)
+    .filter((c) => isStr(c.id) && isStr(c.subscriptionId) && isDate(c.chargedAt) && isNum(c.amountTwd))
+    .map((c) => ({
+      id: c.id as string,
+      subscriptionId: c.subscriptionId as string,
+      chargedAt: c.chargedAt as string,
+      amountOriginal: isNum(c.amountOriginal) ? c.amountOriginal : 0,
+      currency: (CURRENCIES.includes(c.currency as Currency) ? c.currency : 'TWD') as Currency,
+      fxRate: isNum(c.fxRate) && c.fxRate > 0 ? c.fxRate : 1,
+      feeTwd: isNum(c.feeTwd) ? c.feeTwd : 0,
+      amountTwd: c.amountTwd as number,
+      source: (['manual', 'auto', 'imported'].includes(c.source as string)
+        ? c.source
+        : 'imported') as Charge['source'],
+      note: isStr(c.note) ? c.note : '',
+    }))
+
+  const rates: FxRate[] = (Array.isArray(raw.fxRates) ? raw.fxRates : [])
+    .filter(isObj)
+    .filter((r) => isDate(r.date) && isNum(r.rate) && r.rate > 0)
+    .map((r, i) => ({
+      id: isStr(r.id) && r.id ? r.id : `fx_sanitized_${i}`,
+      date: r.date as string,
+      pair: 'USD/TWD',
+      rate: r.rate as number,
+      source: r.source === 'manual' ? 'manual' : 'market',
+    }))
+
+  const s: Record<string, unknown> = isObj(raw.settings) ? raw.settings : {}
+  const feeRate = isNum(s.feeRate) && s.feeRate >= 0 && s.feeRate <= 0.2 ? s.feeRate : 0.015
+
+  return {
+    subscriptions: subs,
+    charges: chgs,
+    fxRates: rates,
+    settings: {
+      displayCurrency: CURRENCIES.includes(s.displayCurrency as Currency)
+        ? (s.displayCurrency as Currency)
+        : 'TWD',
+      basis: BASIS.includes(s.basis as string) ? (s.basis as Settings['basis']) : 'cash',
+      defaultRate: isNum(s.defaultRate) && s.defaultRate > 0 ? s.defaultRate : 32,
+      feeRate,
+      monthlyBudgetTwd:
+        isNum(s.monthlyBudgetTwd) && s.monthlyBudgetTwd >= 0 ? Math.round(s.monthlyBudgetTwd) : 0,
+    },
   }
 }
