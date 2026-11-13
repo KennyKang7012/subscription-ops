@@ -4,7 +4,11 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { port: 5173 },
+  server: {
+    port: 5173,
+    // playwright-cli 會把下載檔寫進專案目錄，Windows 上被檔案監看鎖住會讓 dev server 崩潰
+    watch: { ignored: ['**/.playwright-cli/**', '**/.shots/**'] },
+  },
   build: {
     // recharts 本身約 570 kB，獨立成 vendor chunk 方便快取
     chunkSizeWarningLimit: 700,
