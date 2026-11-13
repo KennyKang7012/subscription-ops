@@ -20,6 +20,7 @@ export interface Actions {
   logChargeFor: (subscriptionId: string, dateISO?: string) => void
 
   addFxRate: (rate: Omit<FxRate, 'id'>) => void
+  updateFxRate: (id: string, patch: Partial<FxRate>) => void
   removeFxRate: (id: string) => void
 
   setSettings: (patch: Partial<Settings>) => void
@@ -30,11 +31,19 @@ export interface Actions {
 
 export type Store = AppData & Actions
 
+export const defaultSettings: Settings = {
+  displayCurrency: 'TWD',
+  basis: 'cash',
+  defaultRate: 32,
+  feeRate: 0.015,
+  monthlyBudgetTwd: 0,
+}
+
 const emptyData = (): AppData => ({
   subscriptions: [],
   charges: [],
   fxRates: [],
-  settings: { displayCurrency: 'TWD', basis: 'cash', defaultRate: 32, feeRate: 0.015 },
+  settings: { ...defaultSettings },
 })
 
 export const useStore = create<Store>()(
@@ -113,7 +122,19 @@ export const useStore = create<Store>()(
         })
       },
 
-      addFxRate: (rate) => set((s) => ({ fxRates: [...s.fxRates, { ...rate, id: uid('fx') }] })),
+      // 同一天、同來源的匯率視為同一筆（自動更新重複呼叫時不會長出重複資料）
+      addFxRate: (rate) =>
+        set((s) => ({
+          fxRates: [
+            ...s.fxRates.filter(
+              (r) => !(r.date === rate.date && r.source === rate.source && r.pair === rate.pair),
+            ),
+            { ...rate, id: uid('fx') },
+          ],
+        })),
+
+      updateFxRate: (id, patch) =>
+        set((s) => ({ fxRates: s.fxRates.map((r) => (r.id === id ? { ...r, ...patch } : r)) })),
 
       removeFxRate: (id) => set((s) => ({ fxRates: s.fxRates.filter((r) => r.id !== id) })),
 
@@ -127,7 +148,17 @@ export const useStore = create<Store>()(
     }),
     {
       name: 'ai-tools-subscription-v1',
-      version: 1,
+      version: 2,
+      // v1 → v2：Settings 多了 monthlyBudgetTwd，舊資料要補上預設值
+      migrate: (persisted) => {
+        const p = (persisted ?? {}) as Partial<AppData>
+        return {
+          subscriptions: p.subscriptions ?? [],
+          charges: p.charges ?? [],
+          fxRates: p.fxRates ?? [],
+          settings: { ...defaultSettings, ...(p.settings ?? {}) },
+        }
+      },
       partialize: (s) => ({
         subscriptions: s.subscriptions,
         charges: s.charges,

@@ -14,6 +14,7 @@ import {
 import { useStore } from '../store/useStore'
 import {
   annualizedTwd,
+  budgetStatus,
   buildInsights,
   computeMonth,
   computeTrend,
@@ -50,6 +51,7 @@ export function Dashboard({ handlers }: { handlers: ModalHandlers }) {
   const upcoming = useMemo(() => upcomingCharges(data, 45), [data])
   const insights = useMemo(() => buildInsights(data), [data])
   const delta = useMemo(() => monthDelta(data, month), [data, month])
+  const budget = useMemo(() => budgetStatus(data, month), [data, month])
 
   const dc = settings.displayCurrency
   const isAccrual = settings.basis === 'accrual'
@@ -136,6 +138,7 @@ export function Dashboard({ handlers }: { handlers: ModalHandlers }) {
           }
           hint={isAccrual ? '年繳已攤入每月' : stat.estimatedTwd > 0 ? '含預估' : '全部為實際扣款'}
         >
+          <>
           {isAccrual ? (
             <div className="space-y-1.5">
               <Row label="月繳訂閱" value={`${activeSubs.filter((s) => s.cycle === 'monthly').length} 個`} tone="text-slate-300" />
@@ -166,6 +169,29 @@ export function Dashboard({ handlers }: { handlers: ModalHandlers }) {
               </div>
             </div>
           )}
+          {budget ? (
+            <div className="mt-2.5 space-y-1.5">
+              <Row
+                label={`預算 ${fmtMoney(conv(budget.budget, dc, rate), dc, digits)}`}
+                value={
+                  budget.over
+                    ? `超支 ${fmt(budget.spent - budget.budget)}`
+                    : `剩 ${fmt(budget.remaining)}`
+                }
+                tone={budget.over ? 'text-rose-300' : budget.ratio >= 0.9 ? 'text-amber-300' : 'text-emerald-300'}
+              />
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(budget.ratio, 1) * 100}%`,
+                    background: budget.over ? '#fb7185' : budget.ratio >= 0.9 ? '#fbbf24' : '#34d399',
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
+          </>
         </KpiCard>
 
         <KpiCard
@@ -262,6 +288,7 @@ export function Dashboard({ handlers }: { handlers: ModalHandlers }) {
         points={trend}
         displayCurrency={dc}
         rate={rate}
+        budgetTwd={settings.monthlyBudgetTwd}
         selectedMonth={month}
         onSelectMonth={setMonth}
       />

@@ -69,6 +69,8 @@ export interface Settings {
   defaultRate: number
   /** 國外刷卡手續費率，預設 1.5% */
   feeRate: number
+  /** 每月支出上限（台幣），0 表示不設限 */
+  monthlyBudgetTwd: number
 }
 
 /** 整個 App 的可持久化狀態 */

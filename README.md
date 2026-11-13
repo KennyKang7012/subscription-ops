@@ -13,6 +13,16 @@ npm run preview  # 預覽 production build
 
 ---
 
+## 功能
+
+**戰情室**：本月／年化支出、較上月增減、12 個月堆疊趨勢、分類佔比、即將扣款、省錢洞察、本月帳單明細。點趨勢圖的長條或下方月份可切換月份。
+
+**日曆**：以月為單位看每天扣了多少錢，點任何一天直接補登該日扣款（該天只有一筆時會自動帶入那個訂閱）。
+
+**訂閱管理**：訂閱清單（可篩分類、依等效年費排序）、暫停／取消、一鍵補登當月扣款、完整扣款紀錄。
+
+**設定**：顯示幣別、計算基準、預設匯率、手續費率、每月支出上限、匯率管理（含自動更新）、報帳 CSV／列印月報、JSON 備份還原。
+
 ## 為什麼這樣設計
 
 記訂閱支出最難的不是加總，是這三件事：
@@ -34,6 +44,8 @@ npm run preview  # 預覽 production build
 
 調匯率不會污染歷史：所有金額都以**原幣**儲存，台幣只在顯示時換算。
 
+**自動匯率**：開啟頁面時會抓一次 `open.er-api.com` 的 USD/TWD 存成當日市場匯率，同一天只抓一次、失敗就默默沿用既有資料。也可以在設定頁按「立即更新」強制重抓。
+
 ## 兩個切換的差別
 
 - **現金流**：這個月真的從帳戶扣掉多少。年繳會在扣款那個月爆量，未到扣款日的用估算補上。
@@ -44,20 +56,24 @@ npm run preview  # 預覽 production build
 ```
 src/
   types.ts                  Subscription / Charge / FxRate / Settings
-  store/useStore.ts         Zustand + persist（localStorage）
+  store/useStore.ts         Zustand + persist（localStorage，含 v1→v2 遷移）
   lib/
     date.ts                 月末夾擠、下次扣款日、月份區間
     money.ts                四捨五入、換算、分類中繼資料
     fx.ts                   匯率解析優先序
-    analytics.ts            單月統計、趨勢、年化、即將扣款、洞察規則
+    rates.ts                自動抓當日匯率（open.er-api.com）
+    analytics.ts            單月統計、趨勢、年化、預算、即將扣款、洞察規則
+    csv.ts                  報帳用 CSV（UTF-8 BOM）
+    report.ts               可列印的 A4 月報 HTML
     seed.ts                 相對今天的示範資料
     file.ts                 JSON 匯出／匯入（含格式驗證）
   components/               KPI 卡、趨勢圖、甜甜圈、清單、表單、洞察…
-  pages/                    Dashboard / Subscriptions / Settings
+  pages/                    Dashboard / Calendar / Subscriptions / Settings
 ```
 
 ## 自動洞察規則
 
+- **預算**：超出上限、或已用 90% 以上
 - **漲價偵測**：追每個訂閱「最近一次價格變動」，換算一年多花多少台幣
 - **同類重疊**：同分類有 2 個以上啟用中就提示，並算出只留最貴一個能省多少
 - **未補登**：本月扣款日已過 3 天以上卻沒有紀錄
@@ -69,11 +85,10 @@ src/
 
 - 資料存在瀏覽器 `localStorage`（key：`ai-tools-subscription-v1`），**清快取就會消失**
 - 右上角「備份」隨時匯出 JSON；設定頁可匯入還原
-- 完全離線，不連任何外部服務
+- 唯一的外部連線是匯率 API（只送出「USD 對各幣別」查詢，不上傳任何記帳資料）。不想連網可以無視失敗，功能完全不受影響
 
 ## 已知限制／下一步
 
-- 尚未自動抓匯率（可接 `open.er-api.com`，無需金鑰）
 - 只有 USD / TWD 兩種幣別（`types.ts` 的 `Currency` 加值 + `money.ts` 補符號即可擴充）
 - 單人使用，沒有多裝置同步（資料層已抽開，之後換 Supabase 只需改 store）
-- 尚未做扣款日曆、家庭方案分攤、報帳用 CSV 匯出
+- 尚未做家庭方案分攤（`seats` 欄位已有資料但還沒顯示）、信用卡帳單 CSV 匯入配對、PWA 離線安裝

@@ -1,20 +1,23 @@
-import { useMemo, useState } from 'react'
-import { Activity, Download, LayoutDashboard, ListChecks, Settings2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Activity, CalendarDays, Download, LayoutDashboard, ListChecks, Settings2 } from 'lucide-react'
 import type { Charge, Subscription } from './types'
 import { snapshot, useStore } from './store/useStore'
 import { downloadJSON } from './lib/file'
+import { syncMarketRate } from './lib/rates'
 import { Button, Segmented, cn } from './components/ui'
 import { Dashboard } from './pages/Dashboard'
+import { CalendarPage } from './pages/Calendar'
 import { SubscriptionsPage } from './pages/Subscriptions'
 import { SettingsPage } from './pages/Settings'
 import { SubscriptionForm } from './components/SubscriptionForm'
 import { ChargeForm } from './components/ChargeForm'
 import type { ModalHandlers } from './handlers'
 
-type Tab = 'dashboard' | 'subs' | 'settings'
+type Tab = 'dashboard' | 'calendar' | 'subs' | 'settings'
 
 const TABS: Array<{ key: Tab; label: string; icon: typeof Activity }> = [
   { key: 'dashboard', label: '戰情室', icon: LayoutDashboard },
+  { key: 'calendar', label: '日曆', icon: CalendarDays },
   { key: 'subs', label: '訂閱管理', icon: ListChecks },
   { key: 'settings', label: '設定', icon: Settings2 },
 ]
@@ -25,6 +28,11 @@ export default function App() {
   const removeCharge = useStore((s) => s.removeCharge)
 
   const [tab, setTab] = useState<Tab>('dashboard')
+
+  // 開頁時自動同步當日匯率；失敗会默默回退，不影響任何計算
+  useEffect(() => {
+    void syncMarketRate()
+  }, [])
 
   const [subOpen, setSubOpen] = useState(false)
   const [subEditing, setSubEditing] = useState<Subscription | null>(null)
@@ -117,6 +125,7 @@ export default function App() {
 
       <main className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6">
         {tab === 'dashboard' ? <Dashboard handlers={handlers} /> : null}
+        {tab === 'calendar' ? <CalendarPage handlers={handlers} /> : null}
         {tab === 'subs' ? <SubscriptionsPage handlers={handlers} /> : null}
         {tab === 'settings' ? <SettingsPage /> : null}
       </main>

@@ -16,11 +16,20 @@ interface Props {
   points: TrendPoint[]
   displayCurrency: 'USD' | 'TWD'
   rate: number
+  /** 每月預算（台幣），0 = 不畫線 */
+  budgetTwd?: number
   selectedMonth: string
   onSelectMonth: (month: string) => void
 }
 
-export function TrendChart({ points, displayCurrency, rate, selectedMonth, onSelectMonth }: Props) {
+export function TrendChart({
+  points,
+  displayCurrency,
+  rate,
+  budgetTwd = 0,
+  selectedMonth,
+  onSelectMonth,
+}: Props) {
   const conv = (twd: number) => (displayCurrency === 'USD' ? round2(twd / (rate || 1)) : Math.round(twd))
 
   const data = points.map((p) => {
@@ -31,6 +40,7 @@ export function TrendChart({ points, displayCurrency, rate, selectedMonth, onSel
   })
 
   const avg = data.length ? Math.round(data.reduce((s, d) => s + Number(d.total), 0) / data.length) : 0
+  const budget = budgetTwd > 0 ? conv(budgetTwd) : 0
   const symbol = displayCurrency === 'USD' ? 'US$' : 'NT$'
   const tick = (v: number) => (v >= 10000 ? `${Math.round(v / 1000)}k` : String(v))
 
@@ -68,7 +78,7 @@ export function TrendChart({ points, displayCurrency, rate, selectedMonth, onSel
     <Card>
       <CardTitle
         title="12 個月支出趨勢"
-        hint={`點長條或下方月份可切換　·　虛線為月均 ${symbol}${avg.toLocaleString()}`}
+        hint={`點長條或下方月份可切換　·　虛線為月均 ${symbol}${avg.toLocaleString()}${budget > 0 ? `，紅線為預算 ${symbol}${budget.toLocaleString()}` : ''}`}
         right={
           <div className="flex flex-wrap items-center gap-3">
             {CATEGORY_ORDER.map((c) => (
@@ -82,7 +92,11 @@ export function TrendChart({ points, displayCurrency, rate, selectedMonth, onSel
       />
       <div className="h-[260px] px-1 pb-3">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }} barCategoryGap="26%">
+          <BarChart
+            data={data}
+            margin={{ top: 8, right: budget > 0 ? 96 : 12, left: 0, bottom: 0 }}
+            barCategoryGap="26%"
+          >
             <CartesianGrid vertical={false} stroke="#1b2537" />
             <XAxis
               dataKey="label"
@@ -100,6 +114,20 @@ export function TrendChart({ points, displayCurrency, rate, selectedMonth, onSel
             />
             <Tooltip content={renderTip} cursor={{ fill: 'rgba(148,163,184,0.06)' }} />
             <ReferenceLine y={avg} stroke="#334155" strokeDasharray="4 4" />
+            {budget > 0 ? (
+              <ReferenceLine
+                y={budget}
+                stroke="#fb7185"
+                strokeDasharray="6 4"
+                strokeOpacity={0.8}
+                label={{
+                  value: `預算 ${symbol}${budget.toLocaleString()}`,
+                  position: 'right',
+                  fill: '#fb7185',
+                  fontSize: 10,
+                }}
+              />
+            ) : null}
             {CATEGORY_ORDER.map((c, i) => (
               <Bar
                 key={c}

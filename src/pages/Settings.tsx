@@ -1,7 +1,10 @@
 import { useRef, useState } from 'react'
-import { Download, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { Download, FileText, Printer, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useStore, snapshot } from '../store/useStore'
 import { downloadJSON, readJSONFile } from '../lib/file'
+import { buildChargesCsv, csvFilename, downloadText, CSV_RANGE_LABEL, type CsvRange } from '../lib/csv'
+import { printMonthlyReport, reportTotals } from '../lib/report'
+import { currentMonthKey, monthLabelFull } from '../lib/date'
 import { fmtMoney } from '../lib/money'
 import { Badge, Button, Card, CardTitle, Field, Input, Segmented, cn } from '../components/ui'
 import { FxPanel } from '../components/FxPanel'
@@ -18,8 +21,11 @@ export function SettingsPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
+  const [csvRange, setCsvRange] = useState<CsvRange>('month')
+  const [csvMonth, setCsvMonth] = useState(currentMonthKey())
 
   const totalTwd = charges.reduce((s, c) => s + c.amountTwd, 0)
+  const report = reportTotals(snapshot(useStore.getState()), csvMonth)
 
   const onImport = async (file: File | undefined) => {
     if (!file) return
@@ -83,10 +89,89 @@ export function SettingsPage() {
               />
             </Field>
           </div>
+
+          <Field label="每月支出上限" hint="台幣，0 表示不設限">
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={0}
+                step={100}
+                value={settings.monthlyBudgetTwd}
+                onChange={(e) => setSettings({ monthlyBudgetTwd: Math.max(0, Number(e.target.value) || 0) })}
+                className="font-mono"
+              />
+              <span className="shrink-0 text-[11px] text-muted">
+                {settings.monthlyBudgetTwd > 0
+                  ? `≈ US$${Math.round(settings.monthlyBudgetTwd / (settings.defaultRate || 1)).toLocaleString()}`
+                  : '未設定'}
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11px] text-muted">
+              設定後，戰情室會在支出接近或超過上限時提醒，趨勢圖也會畫一條預算線。
+            </p>
+          </Field>
         </div>
       </Card>
 
       <FxPanel />
+
+      <Card className="lg:col-span-2">
+        <CardTitle
+          title="報帳與匯出"
+          hint="扣款明細匯成 Excel 可開的 CSV，或列印成 A4 月報（可另存 PDF）"
+          right={
+            <div className="flex items-center gap-2">
+              <Badge className="bg-white/5 text-slate-300 ring-white/10">{report.count} 筆</Badge>
+              <Badge className="bg-brand/12 text-brand ring-brand/30">
+                {monthLabelFull(csvMonth)} · {fmtMoney(report.total, 'TWD')}
+              </Badge>
+            </div>
+          }
+        />
+        <div className="flex flex-wrap items-end gap-3 px-5 pb-5">
+          <Field label="匯出範圍">
+            <Segmented
+              value={csvRange}
+              onChange={setCsvRange}
+              options={(['month', 'year', 'all'] as CsvRange[]).map((r) => ({
+                value: r,
+                label: CSV_RANGE_LABEL[r],
+              }))}
+            />
+          </Field>
+          <Field label="基準月份" hint={csvRange === 'all' ? '不影響' : undefined}>
+            <Input
+              type="month"
+              value={csvMonth}
+              onChange={(e) => setCsvMonth(e.target.value || currentMonthKey())}
+              className="w-[150px] font-mono"
+            />
+          </Field>
+          <Button
+            variant="primary"
+            onClick={() => {
+              const data = snapshot(useStore.getState())
+              downloadText(csvFilename(csvRange, csvMonth), buildChargesCsv(data, csvRange, csvMonth), 'text/csv;charset=utf-8')
+              setStatus({ kind: 'ok', msg: `已匯出 ${CSV_RANGE_LABEL[csvRange]}扣款明細 CSV` })
+            }}
+          >
+            <FileText size={14} /> 匯出 CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              const ok = printMonthlyReport(snapshot(useStore.getState()), csvMonth)
+              if (!ok)
+                setStatus({ kind: 'err', msg: '無法開啟列印視窗，請檢查瀏覽器是否封鎖彈出視窗' })
+            }}
+          >
+            <Printer size={14} /> 列印月報
+          </Button>
+          <span className="ml-auto max-w-[320px] text-[11px] leading-relaxed text-muted">
+            CSV 含 UTF-8 BOM，Excel 直開中文不亂碼；月報是獨立頁面，用 Ctrl+P 可另存 PDF。
+          </span>
+        </div>
+      </Card>
 
       <Card className="lg:col-span-2">
         <CardTitle

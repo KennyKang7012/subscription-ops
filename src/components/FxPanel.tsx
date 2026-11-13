@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { RATE_SOURCE_META, latestRate } from '../lib/fx'
+import { marketRateAgeDays, syncMarketRate } from '../lib/rates'
 import { round2 } from '../lib/money'
 import { todayISO } from '../lib/date'
 import { Badge, Button, Card, CardTitle, Field, Input, Select, cn } from './ui'
@@ -17,9 +18,20 @@ export function FxPanel() {
   const [date, setDate] = useState(todayISO())
   const [rate, setRate] = useState('32')
   const [source, setSource] = useState<'manual' | 'market'>('manual')
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const run = async (force: boolean) => {
+    setSyncing(true)
+    const res = await syncMarketRate({ force })
+    setSyncMsg({ ok: res.ok, text: res.message })
+    if (res.ok && res.rate) setRate(String(res.rate))
+    setSyncing(false)
+  }
 
   const current = latestRate({ subscriptions, charges, fxRates, settings })
   const sorted = [...fxRates].sort((a, b) => b.date.localeCompare(a.date))
+  const ageDays = marketRateAgeDays(fxRates)
   const usdMonthly = round2(
     subscriptions
       .filter((s) => s.currency === 'USD' && s.status === 'active')
@@ -40,6 +52,25 @@ export function FxPanel() {
           </div>
         }
       />
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-line/60 px-5 py-2.5">
+        <Button size="sm" variant="outline" disabled={syncing} onClick={() => void run(true)}>
+          <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+          {syncing ? '更新中…' : '立即更新'}
+        </Button>
+        <span className="text-[11px] text-muted">
+          來源 open.er-api.com ·{' '}
+          {syncMsg ? (
+            <span className={syncMsg.ok ? 'text-emerald-300' : 'text-amber-300'}>{syncMsg.text}</span>
+          ) : ageDays === null ? (
+            '尚無市場匯率'
+          ) : ageDays === 0 ? (
+            '今天已同步'
+          ) : (
+            `${ageDays} 天前更新`
+          )}
+        </span>
+      </div>
 
       <div className="grid gap-2 px-5 pb-4 sm:grid-cols-[1fr_1fr_1fr_auto]">
         <Field label="日期">

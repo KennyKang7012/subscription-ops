@@ -241,6 +241,7 @@ export function createSeedData(): AppData {
       basis: 'cash',
       defaultRate: 32,
       feeRate: 0.015,
+      monthlyBudgetTwd: 6000,
     },
   }
 }

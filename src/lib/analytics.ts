@@ -227,6 +227,28 @@ export function upcomingCharges(data: AppData, withinDays = 45): UpcomingItem[] 
   return out.sort((a, b) => a.date.localeCompare(b.date))
 }
 
+/** 月度預算狀態；未設定預算回傳 null */
+export interface BudgetStatus {
+  budget: number
+  spent: number
+  remaining: number
+  ratio: number
+  over: boolean
+}
+
+export function budgetStatus(data: AppData, monthKey: string = monthKeyOf(todayISO())): BudgetStatus | null {
+  const budget = data.settings.monthlyBudgetTwd
+  if (!(budget > 0)) return null
+  const spent = computeMonth(data, monthKey).totalTwd
+  return {
+    budget,
+    spent,
+    remaining: round2(budget - spent),
+    ratio: spent / budget,
+    over: spent > budget,
+  }
+}
+
 export type InsightLevel = 'warn' | 'tip' | 'info'
 
 export interface Insight {
@@ -317,6 +339,27 @@ export function buildInsights(data: AppData): Insight[] {
   }
 
   // 5) 匯率可信度
+  const budget = budgetStatus(data, thisMonth)
+  if (budget) {
+    if (budget.over) {
+      out.push({
+        id: 'budget-over',
+        level: 'warn',
+        title: `本月超出預算 NT$${Math.round(budget.spent - budget.budget).toLocaleString()}`,
+        detail: `預算 NT$${Math.round(budget.budget).toLocaleString()}，目前已用 NT$${Math.round(
+          budget.spent,
+        ).toLocaleString()}（${Math.round(budget.ratio * 100)}%）。若不該花的可以到「訂閱管理」暫停它`,
+      })
+    } else if (budget.ratio >= 0.9) {
+      out.push({
+        id: 'budget-near',
+        level: 'tip',
+        title: `預算已用 ${Math.round(budget.ratio * 100)}%`,
+        detail: `剩 NT$${Math.round(budget.remaining).toLocaleString()}，本月還有 ${upcomingCharges(data, 45).filter((u) => monthKeyOf(u.date) === thisMonth).length} 筆扣款要來`,
+      })
+    }
+  }
+
   if (rate.source === 'default') {
     out.push({
       id: 'rate-default',
