@@ -30,6 +30,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -152,13 +153,12 @@ describe('syncMarketRate', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const pending = syncMarketRate()
-    // 還沒到 10 秒：請求應該還掛著
-    await vi.advanceTimersByTimeAsync(9_000)
+    // 鎖到 1 毫秒：9.999 秒還不能 abort，再多 2 毫秒才觸發（TIMEOUT_MS = 10_000）
+    await vi.advanceTimersByTimeAsync(9_999)
     expect(aborted).toBe(false)
 
-    await vi.advanceTimersByTimeAsync(1_500)
+    await vi.advanceTimersByTimeAsync(2)
     const res = await pending
-    vi.useRealTimers()
 
     expect(aborted).toBe(true)
     expect(res.ok).toBe(false)

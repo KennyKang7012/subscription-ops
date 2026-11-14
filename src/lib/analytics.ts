@@ -293,10 +293,10 @@ export function buildInsights(data: AppData): Insight[] {
     const last = list[list.length - 1]
     const before = [...list].reverse().find((c) => c.amountOriginal !== last.amountOriginal)
     if (!before || before.amountOriginal <= 0) continue
-    // 先收斂到 4 位小數再比門檻：10 → 10.3 算出來是 0.030000000000000027，
-    // 不處理的話「剛好漲 3%」會偶爾觸發、偶爾不觸發。
-    const diff = Math.round(((last.amountOriginal - before.amountOriginal) / before.amountOriginal) * 10000) / 10000
-    if (diff <= 0.03) continue
+    // 用 epsilon 吸收浮點誤差（10 → 10.3 算出來是 0.030000000000000027），
+    // 不要四捨五入：把比例量化到小數 4 位的話，3.004% 會被誤判成沒漲。
+    const diff = (last.amountOriginal - before.amountOriginal) / before.amountOriginal
+    if (diff <= 0.03 + 1e-9) continue
     const yearlyImpact =
       diff * before.amountOriginal * (sub.cycle === 'yearly' ? 1 : 12) * (sub.currency === 'USD' ? rate.rate : 1)
     out.push({

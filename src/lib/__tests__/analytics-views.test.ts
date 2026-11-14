@@ -169,15 +169,28 @@ describe('buildInsights — 個別規則', () => {
     expect(ids(data)).not.toContain('hike-s1')
   })
 
-  it('剛好 3% 不算漲價（門檻是嚴格大於）', () => {
-    const data = makeData({
-      subscriptions: [makeSub({ id: 's1', anchorDay: 8 })],
-      charges: [
-        makeCharge({ id: 'c1', chargedAt: '2026-10-08', amountOriginal: 10 }),
-        makeCharge({ id: 'c2', chargedAt: '2026-11-08', amountOriginal: 10.3 }),
-      ],
-    })
-    expect(ids(data)).not.toContain('hike-s1')
+  const hikeAt = (from: number, to: number) =>
+    ids(
+      makeData({
+        subscriptions: [makeSub({ id: 's1', anchorDay: 8 })],
+        charges: [
+          makeCharge({ id: 'c1', chargedAt: '2026-10-08', amountOriginal: from }),
+          makeCharge({ id: 'c2', chargedAt: '2026-11-08', amountOriginal: to }),
+        ],
+      }),
+    )
+
+  it('剛好 3% 不算漲價（門檻是嚴格大於，且要吸收浮點誤差）', () => {
+    expect(hikeAt(10, 10.3)).not.toContain('hike-s1')
+    expect(hikeAt(100, 103)).not.toContain('hike-s1')
+  })
+
+  it('3.004% 就算漲價（不能被四捨五入吃掉）', () => {
+    expect(hikeAt(100, 103.004)).toContain('hike-s1')
+  })
+
+  it('2.996% 不算漲價', () => {
+    expect(hikeAt(100, 102.996)).not.toContain('hike-s1')
   })
 
   it('降價不觸發漲價提示', () => {
@@ -338,15 +351,20 @@ describe('buildInsights — 個別規則', () => {
       settings: settings({ monthlyBudgetTwd: 100 }),
     })
     const list = buildInsights(data)
-    // 8 個候選（5 warn + 1 tip + 2 info）→ 只留前 6 個，且順序要固定
-    expect(list.map((i) => i.id)).toEqual([
+    // 8 個候選（5 warn + 1 tip + 2 info）→ 留 6 個：所有 warn + 唯一的 tip，
+    // 兩個 info 被切掉。這裡不綁同級別的 push 順序，只鎖「留下哪些級別」。
+    expect(list).toHaveLength(6)
+    expect(list.filter((i) => i.level === 'warn').map((i) => i.id).sort()).toEqual([
+      'budget-over',
       'hike-h1',
       'hike-h2',
       'missing-charge',
       'trial-t',
-      'budget-over',
-      'overlap-ai',
     ])
+    expect(list.filter((i) => i.level === 'tip').map((i) => i.id)).toEqual(['overlap-ai'])
+    expect(list.some((i) => i.id === 'annual-y')).toBe(false)
+    expect(list.some((i) => i.id === 'rate-stale')).toBe(false)
+
     const order = { warn: 0, tip: 1, info: 2 } as const
     const levels = list.map((i) => order[i.level])
     expect(levels).toEqual([...levels].sort((x, y) => x - y))
