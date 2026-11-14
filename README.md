@@ -243,3 +243,9 @@ npm run test:cov  # 附覆蓋率
 - 單人使用、無多裝置同步（資料層已抽開，換 Supabase 只需改 store）
 - 未做家庭方案分攤（`seats` 欄位有資料但還沒顯示）、信用卡帳單 CSV 匯入配對、PWA 離線安裝
 - UI 互動（表單驗證、按鈕停用條件、匯入還原流程）仍靠人工驗，沒有 component test
+
+---
+
+## 授權
+
+[MIT](LICENSE) © 2026 Kenny Kang
