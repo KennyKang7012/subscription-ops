@@ -75,7 +75,7 @@ export function downloadText(filename: string, content: string, mime: string) {
 }
 
 export function csvFilename(range: CsvRange, anchorMonth: string): string {
-  if (range === 'all') return 'ai-tools-subscription-全部扣款.csv'
-  if (range === 'year') return `ai-tools-subscription-${anchorMonth.slice(0, 4)}年.csv`
-  return `ai-tools-subscription-${anchorMonth}.csv`
+  if (range === 'all') return 'subscription-ops-全部扣款.csv'
+  if (range === 'year') return `subscription-ops-${anchorMonth.slice(0, 4)}年.csv`
+  return `subscription-ops-${anchorMonth}.csv`
 }

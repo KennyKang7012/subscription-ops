@@ -113,8 +113,8 @@ describe('buildChargesCsv', () => {
 
 describe('csvFilename', () => {
   it('依範圍給不同檔名', () => {
-    expect(csvFilename('month', '2026-11')).toBe('ai-tools-subscription-2026-11.csv')
-    expect(csvFilename('year', '2026-11')).toBe('ai-tools-subscription-2026年.csv')
-    expect(csvFilename('all', '2026-11')).toBe('ai-tools-subscription-全部扣款.csv')
+    expect(csvFilename('month', '2026-11')).toBe('subscription-ops-2026-11.csv')
+    expect(csvFilename('year', '2026-11')).toBe('subscription-ops-2026年.csv')
+    expect(csvFilename('all', '2026-11')).toBe('subscription-ops-全部扣款.csv')
   })
 })

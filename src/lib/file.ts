@@ -9,7 +9,7 @@ export function downloadJSON(data: AppData) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `ai-tools-subscription-${todayISO()}.json`
+  a.download = `subscription-ops-${todayISO()}.json`
   document.body.appendChild(a)
   a.click()
   a.remove()
