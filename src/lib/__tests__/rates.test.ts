@@ -127,12 +127,40 @@ describe('syncMarketRate', () => {
     expect(res.message).toContain('沿用既有匯率')
   })
 
-  it('逾時（AbortError）會轉成「連線逾時」', async () => {
+  it('AbortError 會轉成「連線逾時」', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() => Promise.reject(new DOMException('aborted', 'AbortError'))),
     )
     const res = await syncMarketRate()
+    expect(res.ok).toBe(false)
+    expect(res.message).toContain('連線逾時')
+  })
+
+  it('真的等滿 10 秒會 abort 請求（不是只測錯誤訊息對應）', async () => {
+    vi.useFakeTimers()
+    let aborted = false
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+      const signal = init.signal as AbortSignal
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          aborted = true
+          reject(new DOMException('aborted', 'AbortError'))
+        })
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const pending = syncMarketRate()
+    // 還沒到 10 秒：請求應該還掛著
+    await vi.advanceTimersByTimeAsync(9_000)
+    expect(aborted).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(1_500)
+    const res = await pending
+    vi.useRealTimers()
+
+    expect(aborted).toBe(true)
     expect(res.ok).toBe(false)
     expect(res.message).toContain('連線逾時')
   })

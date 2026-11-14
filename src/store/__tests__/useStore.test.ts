@@ -104,6 +104,47 @@ describe('logChargeFor：一鍵補登', () => {
     ])
   })
 
+  it('補登舊月份時，用「那天之前」的匯率回填，不會借用新月份的匯率', () => {
+    const lastMonth = addMonths(currentMonthKey(), -1)
+    const twoMonthsAgo = addMonths(currentMonthKey(), -2)
+    reset({
+      subscriptions: [sub],
+      charges: [
+        {
+          id: 'oldCharge',
+          subscriptionId: 's1',
+          chargedAt: `${twoMonthsAgo}-08`,
+          amountOriginal: 20,
+          currency: 'USD',
+          fxRate: 30,
+          feeTwd: 9,
+          amountTwd: 609,
+          source: 'manual',
+          note: '',
+        },
+        {
+          id: 'newCharge',
+          subscriptionId: 's1',
+          chargedAt: `${currentMonthKey()}-08`,
+          amountOriginal: 20,
+          currency: 'USD',
+          fxRate: 33,
+          feeTwd: 9.9,
+          amountTwd: 669.9,
+          source: 'manual',
+          note: '',
+        },
+      ],
+    })
+
+    // 補登上個月 5 號：那一刻之前的最近一筆是兩個月前的 30，
+    // 不可以用本月 11-08 那筆的 33 回填
+    useStore.getState().logChargeFor('s1', `${lastMonth}-05`)
+    const created = useStore.getState().charges.find((c) => c.chargedAt === `${lastMonth}-05`)!
+    expect(created.fxRate).toBe(30)
+    expect(created.amountTwd).toBe(609)
+  })
+
   it('找不到訂閱時回傳 false', () => {
     reset({ subscriptions: [] })
     expect(useStore.getState().logChargeFor('nope')).toBe(false)

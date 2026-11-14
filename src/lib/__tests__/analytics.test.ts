@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   budgetStatus,
   computeMonth,
@@ -81,8 +81,15 @@ describe('computeMonth（攤提）', () => {
 })
 
 describe('isBillableInMonth（回歸測試：狀態改動不可清空歷史）', () => {
-  const thisMonth = currentMonthKey()
-  const lastMonth = addMonths(thisMonth, -1)
+  // 固定「今天」，否則跨月或跑在月初時這些相對月份會飄
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 10, 14, 12, 0, 0))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const thisMonth = () => currentMonthKey()
+  const lastMonth = () => addMonths(currentMonthKey(), -1)
 
   it('取消但沒有結束日的舊資料，歷史月份仍然計入', () => {
     const sub = makeSub({
@@ -90,24 +97,24 @@ describe('isBillableInMonth（回歸測試：狀態改動不可清空歷史）',
       endedAt: null,
       startedAt: '2026-01-01',
     })
-    expect(isBillableInMonth(sub, lastMonth)).toBe(true)
-    expect(isBillableInMonth(sub, thisMonth)).toBe(false)
+    expect(isBillableInMonth(sub, lastMonth())).toBe(true)
+    expect(isBillableInMonth(sub, thisMonth())).toBe(false)
   })
 
   it('取消且有結束日：只算到結束那個月', () => {
     const sub = makeSub({ status: 'cancelled', endedAt: todayISO(), startedAt: '2026-01-01' })
-    expect(isBillableInMonth(sub, lastMonth)).toBe(true)
-    expect(isBillableInMonth(sub, thisMonth)).toBe(true)
+    expect(isBillableInMonth(sub, lastMonth())).toBe(true)
+    expect(isBillableInMonth(sub, thisMonth())).toBe(true)
   })
 
   it('暫停中：當月可能已經扣過款所以仍計入，但不再產生估算', () => {
     const sub = makeSub({ status: 'paused', endedAt: todayISO(), startedAt: '2026-01-01' })
-    expect(isBillableInMonth(sub, thisMonth)).toBe(true)
-    expect(isBillableInMonth(sub, addMonths(thisMonth, 1))).toBe(false)
+    expect(isBillableInMonth(sub, thisMonth())).toBe(true)
+    expect(isBillableInMonth(sub, addMonths(thisMonth(), 1))).toBe(false)
 
     const data = makeData({ subscriptions: [sub], charges: [] })
-    expect(computeMonth(data, thisMonth, 'cash').estimatedTwd).toBe(0)
-    expect(computeMonth(data, thisMonth, 'accrual').totalTwd).toBe(0)
+    expect(computeMonth(data, thisMonth(), 'cash').estimatedTwd).toBe(0)
+    expect(computeMonth(data, thisMonth(), 'accrual').totalTwd).toBe(0)
   })
 })
 

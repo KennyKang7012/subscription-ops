@@ -114,9 +114,10 @@ export const useStore = create<Store>()(
         // 一鍵補登要去重：同一個訂閱在同一個月只算一次，避免連點重複計入
         if (hasChargeInMonth(state, subscriptionId, month)) return false
 
-        // 沿用該訂閱最近一筆的匯率，沒有就用最近一筆市場匯率
+        // 沿用該訂閱在「這一天之前」最近一筆的匯率。
+        // 一定要比對日期：補登舊月份時不能拿新月份的匯率回填。
         const past = state.charges
-          .filter((c) => c.subscriptionId === subscriptionId && c.currency === 'USD')
+          .filter((c) => c.subscriptionId === subscriptionId && c.currency === 'USD' && c.chargedAt <= date)
           .sort((a, b) => b.chargedAt.localeCompare(a.chargedAt))
         const fallback = state.fxRates
           .filter((r) => r.date <= date)

@@ -19,6 +19,14 @@ describe('splitCharge', () => {
     expect(splitCharge(650, 'TWD', 32, 0.015)).toEqual({ base: 650, feeTwd: 0, total: 650 })
   })
 
+  it('手續費 0% 時台幣等於原幣換算', () => {
+    expect(splitCharge(20, 'USD', 32, 0)).toEqual({ base: 640, feeTwd: 0, total: 640 })
+  })
+
+  it('手續費上限 20% 也算得出來', () => {
+    expect(splitCharge(100, 'USD', 30, 0.2)).toEqual({ base: 3000, feeTwd: 600, total: 3600 })
+  })
+
   it('四捨五入到小數 2 位', () => {
     const r = splitCharge(19.99, 'USD', 31.876, 0.015)
     expect(r.base).toBe(637.2)

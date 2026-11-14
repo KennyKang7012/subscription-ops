@@ -169,6 +169,17 @@ describe('buildInsights — 個別規則', () => {
     expect(ids(data)).not.toContain('hike-s1')
   })
 
+  it('剛好 3% 不算漲價（門檻是嚴格大於）', () => {
+    const data = makeData({
+      subscriptions: [makeSub({ id: 's1', anchorDay: 8 })],
+      charges: [
+        makeCharge({ id: 'c1', chargedAt: '2026-10-08', amountOriginal: 10 }),
+        makeCharge({ id: 'c2', chargedAt: '2026-11-08', amountOriginal: 10.3 }),
+      ],
+    })
+    expect(ids(data)).not.toContain('hike-s1')
+  })
+
   it('降價不觸發漲價提示', () => {
     const data = makeData({
       subscriptions: [makeSub({ id: 's1', anchorDay: 8 })],
@@ -312,13 +323,30 @@ describe('buildInsights — 個別規則', () => {
         makeCharge({ id: 'p2', subscriptionId: 'h1', chargedAt: '2026-10-08', amountOriginal: 40 }),
         makeCharge({ id: 'p3', subscriptionId: 'h2', chargedAt: '2026-09-09', amountOriginal: 10 }),
         makeCharge({ id: 'p4', subscriptionId: 'h2', chargedAt: '2026-10-09', amountOriginal: 40 }),
-        makeCharge({ id: 'p5', subscriptionId: 'v', chargedAt: '2026-11-05', amountOriginal: 5000 }),
+        makeCharge({
+          id: 'p5',
+          subscriptionId: 'v',
+          chargedAt: '2026-11-05',
+          amountOriginal: 5000,
+          currency: 'TWD',
+          fxRate: 1,
+          feeTwd: 0,
+          amountTwd: 5000,
+        }),
       ],
       fxRates: [{ id: 'f1', date: '2026-09-01', pair: 'USD/TWD', rate: 32, source: 'market' }],
       settings: settings({ monthlyBudgetTwd: 100 }),
     })
     const list = buildInsights(data)
-    expect(list.length).toBe(6)
+    // 8 個候選（5 warn + 1 tip + 2 info）→ 只留前 6 個，且順序要固定
+    expect(list.map((i) => i.id)).toEqual([
+      'hike-h1',
+      'hike-h2',
+      'missing-charge',
+      'trial-t',
+      'budget-over',
+      'overlap-ai',
+    ])
     const order = { warn: 0, tip: 1, info: 2 } as const
     const levels = list.map((i) => order[i.level])
     expect(levels).toEqual([...levels].sort((x, y) => x - y))
