@@ -1,6 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { splitCharge } from '../money'
-import { clearBackup, readBackup, sanitizeAppData, saveBackup, validateAppData } from '../file'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { fmtMoney, fmtByCurrency, formatPercent, fromTwd, splitCharge } from '../money'
+import {
+  clearBackup,
+  readBackup,
+  readJSONFile,
+  sanitizeAppData,
+  saveBackup,
+  validateAppData,
+} from '../file'
 import { makeCharge, makeData, makeSub } from './fixtures'
 
 describe('splitCharge', () => {
@@ -184,5 +191,71 @@ describe('sanitizeAppData（舊資料就地清理）', () => {
       settings: { defaultRate: 32 },
     } as never)
     expect(clean.subscriptions[0].startedAt).toBe('2026-03-01')
+  })
+})
+
+describe('金額格式化', () => {
+  it('台幣不帶小數，美金預設 2 位', () => {
+    expect(fmtMoney(5620, 'TWD')).toBe('NT$5,620')
+    expect(fmtMoney(658.13, 'USD', 2)).toBe('US$658.13')
+    expect(fmtMoney(0, 'TWD')).toBe('NT$0')
+  })
+
+  it('負數保留正負號', () => {
+    expect(fmtMoney(-150, 'TWD')).toBe('-NT$150')
+  })
+
+  it('百分比帶正負號', () => {
+    expect(formatPercent(0.1267)).toBe('+12.7%')
+    expect(formatPercent(-0.05)).toBe('-5.0%')
+  })
+
+  it('台幣換回美金用同一個匯率', () => {
+    expect(fromTwd(640, 'USD', 32)).toBe(20)
+    expect(fromTwd(640, 'TWD', 32)).toBe(640)
+  })
+
+  it('fmtByCurrency 依幣別決定小數位', () => {
+    expect(fmtByCurrency(649.6, 'USD')).toBe('US$649.60')
+    expect(fmtByCurrency(649.6, 'TWD')).toBe('NT$650')
+  })
+})
+
+describe('readJSONFile（匯入流程的入口）', () => {
+  const stubReader = (text: string | null, fail = false) => {
+    class FakeFileReader {
+      result: string | null = text
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      readAsText() {
+        if (fail) this.onerror?.()
+        else this.onload?.()
+      }
+    }
+    vi.stubGlobal('FileReader', FakeFileReader)
+  }
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('合法檔案會回傳正規化後的資料', async () => {
+    stubReader(JSON.stringify(makeData({ charges: [makeCharge()] })))
+    const data = await readJSONFile({} as File)
+    expect(data.charges).toHaveLength(1)
+    expect(data.settings.feeRate).toBe(0.015)
+  })
+
+  it('不是 JSON 時給出明確訊息', async () => {
+    stubReader('{壞掉')
+    await expect(readJSONFile({} as File)).rejects.toThrow('不是合法的 JSON')
+  })
+
+  it('格式不符時把欄位問題帶出來', async () => {
+    stubReader(JSON.stringify({ charges: [], fxRates: [], settings: { defaultRate: 32 } }))
+    await expect(readJSONFile({} as File)).rejects.toThrow('缺少 subscriptions 陣列')
+  })
+
+  it('讀檔失敗時不會靜靜卡住', async () => {
+    stubReader(null, true)
+    await expect(readJSONFile({} as File)).rejects.toThrow('讀取檔案失敗')
   })
 })

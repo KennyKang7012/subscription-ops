@@ -220,3 +220,131 @@ describe('setSettings：不讓壞值流進計算', () => {
     expect(useStore.getState().settings.monthlyBudgetTwd).toBe(0)
   })
 })
+
+describe('其他資料動作', () => {
+  it('updateCharge 只改指定欄位', () => {
+    reset({
+      charges: [
+        {
+          id: 'c1',
+          subscriptionId: 's1',
+          chargedAt: `${currentMonthKey()}-08`,
+          amountOriginal: 20,
+          currency: 'USD',
+          fxRate: 32,
+          feeTwd: 9.6,
+          amountTwd: 649.6,
+          source: 'manual',
+          note: '原備註',
+        },
+      ],
+    })
+    useStore.getState().updateCharge('c1', { note: '改過', amountTwd: 700 })
+    const c = useStore.getState().charges[0]
+    expect(c.note).toBe('改過')
+    expect(c.amountTwd).toBe(700)
+    expect(c.amountOriginal).toBe(20)
+  })
+
+  it('addFxRate：同一天同來源視為同一筆（upsert），不會長出重複資料', () => {
+    const date = `${currentMonthKey()}-01`
+    useStore.getState().addFxRate({ date, pair: 'USD/TWD', rate: 32, source: 'market' })
+    useStore.getState().addFxRate({ date, pair: 'USD/TWD', rate: 33, source: 'market' })
+    const list = useStore.getState().fxRates.filter((r) => r.date === date && r.source === 'market')
+    expect(list).toHaveLength(1)
+    expect(list[0].rate).toBe(33)
+  })
+
+  it('addFxRate：市場與手動可以並存在同一天', () => {
+    const date = `${currentMonthKey()}-02`
+    useStore.getState().addFxRate({ date, pair: 'USD/TWD', rate: 32, source: 'market' })
+    useStore.getState().addFxRate({ date, pair: 'USD/TWD', rate: 31, source: 'manual' })
+    expect(useStore.getState().fxRates.filter((r) => r.date === date)).toHaveLength(2)
+  })
+
+  it('replaceAll 會整批換掉資料', () => {
+    reset({ subscriptions: [makeSub({ id: 'old' })] })
+    useStore.getState().replaceAll({
+      subscriptions: [makeSub({ id: 'new' })],
+      charges: [],
+      fxRates: [],
+      settings: { ...defaultSettings, displayCurrency: 'USD' },
+    })
+    expect(useStore.getState().subscriptions.map((s) => s.id)).toEqual(['new'])
+    expect(useStore.getState().settings.displayCurrency).toBe('USD')
+  })
+
+  it('resetToSeed 會回到示範資料（有訂閱也有扣款）', () => {
+    reset({ subscriptions: [] })
+    useStore.getState().resetToSeed()
+    expect(useStore.getState().subscriptions.length).toBeGreaterThan(0)
+    expect(useStore.getState().charges.length).toBeGreaterThan(0)
+  })
+
+  it('clearAll 清空資料但保留一組可用的預設設定', () => {
+    useStore.getState().resetToSeed()
+    useStore.getState().clearAll()
+    expect(useStore.getState().subscriptions).toHaveLength(0)
+    expect(useStore.getState().charges).toHaveLength(0)
+    expect(useStore.getState().settings.defaultRate).toBe(defaultSettings.defaultRate)
+  })
+})
+
+describe('persist 與 migrate', () => {
+  const KEY = 'ai-tools-subscription-v1'
+
+  it('只把四塊資料寫進 localStorage，不會序列化函式', () => {
+    reset({ subscriptions: [makeSub({ id: 's1' })] })
+    useStore.setState({ subscriptions: [makeSub({ id: 's1' })] })
+    const raw = JSON.parse(localStorage.getItem(KEY)!)
+    expect(Object.keys(raw.state).sort()).toEqual(['charges', 'fxRates', 'settings', 'subscriptions'])
+    expect(raw.version).toBe(3)
+  })
+
+  it('v2 的髒資料在 rehydrate 時會被 migrate 清掉', async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        version: 2,
+        state: {
+          subscriptions: [
+            { id: 'bad', name: '壞分類', amount: 5, currency: 'USD', category: 'foo', startedAt: '' },
+            { id: 'ok', name: '正常', amount: 20, currency: 'USD', category: 'ai', startedAt: '2026-01-01' },
+          ],
+          charges: [
+            { id: 'c1', subscriptionId: 'ok', chargedAt: '', amountTwd: 100 },
+            { id: 'c2', subscriptionId: 'ok', chargedAt: '2026-11-08', amountTwd: 658 },
+          ],
+          fxRates: [{ id: 'f1', date: '2026-11-01', pair: 'USD/TWD', rate: 0, source: 'market' }],
+          settings: { displayCurrency: 'TWD', basis: 'cash', defaultRate: 0, feeRate: -1 },
+        },
+      }),
+    )
+
+    await useStore.persist.rehydrate()
+
+    const s = useStore.getState()
+    expect(s.subscriptions.find((x) => x.id === 'bad')!.category).toBe('other')
+    expect(s.subscriptions.find((x) => x.id === 'bad')!.startedAt).toBe(todayISO())
+    expect(s.charges.map((c) => c.id)).toEqual(['c2'])
+    expect(s.fxRates).toHaveLength(0)
+    expect(s.settings.defaultRate).toBe(32)
+    expect(s.settings.feeRate).toBe(0.015)
+  })
+
+  it('migrate 不會把正常的資料改掉', async () => {
+    const good = {
+      subscriptions: [makeSub({ id: 's1', category: 'writing' })],
+      charges: [],
+      fxRates: [{ id: 'f1', date: '2026-11-01', pair: 'USD/TWD', rate: 32.4, source: 'manual' }],
+      settings: { ...defaultSettings, monthlyBudgetTwd: 8000 },
+    }
+    localStorage.setItem(KEY, JSON.stringify({ version: 2, state: good }))
+    await useStore.persist.rehydrate()
+
+    const s = useStore.getState()
+    expect(s.subscriptions[0].category).toBe('writing')
+    expect(s.settings.monthlyBudgetTwd).toBe(8000)
+    expect(s.fxRates[0].rate).toBe(32.4)
+  })
+})
