@@ -28,6 +28,28 @@ npm run dev        # 開 http://localhost:5173
 
 ---
 
+## 介面預覽
+
+**戰情室** — 本月支出（實際 / 預估）、年化、12 個月趨勢、玫瑰色虛線是每月預算
+
+![戰情室](docs/screenshots/dashboard.png)
+
+**日曆** — 每天扣了多少，點日期直接補登；實 = 已入帳、估 = 依扣款日推算
+
+![日曆](docs/screenshots/calendar.png)
+
+**訂閱管理** — 依等效年費排序，右側可補登 / 編輯 / 刪除
+
+![訂閱管理](docs/screenshots/subscriptions.png)
+
+**設定** — 幣別與基準、每月上限、匯率來源、報帳匯出、資料備份
+
+![設定](docs/screenshots/settings.png)
+
+> 截圖用的是首次載入的示範資料，數字都是真的算出來的。
+
+---
+
 ## 第一次設定（約 5 分鐘）
 
 1. **設定 → 清空全部**（拿掉示範資料）
@@ -195,6 +217,7 @@ src/
   components/               KPI 卡、趨勢圖、甜甜圈、清單、表單、洞察…
   pages/                    Dashboard / Calendar / Subscriptions / Settings
 vitest.config.ts            測試設定（node 環境 + setupFiles）
+docs/screenshots/           README 用的介面截圖（改 UI 後請用乾淨的示範資料重抓）
 ```
 
 ## 測試
